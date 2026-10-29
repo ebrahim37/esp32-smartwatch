@@ -1,0 +1,270 @@
+{
+  "schema": 1,
+  "board": "watch.kicad_pcb",
+  "groups": [
+    {
+      "name": "charger",
+      "anchor": "U1",
+      "role": "power",
+      "side": "F",
+      "refs": [
+        "C10",
+        "C19",
+        "C2",
+        "C3",
+        "C4",
+        "C42",
+        "C57",
+        "C58",
+        "C7",
+        "C8",
+        "L1",
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "U1"
+      ],
+      "why": "Functional local nets; shared rails do not group unrelated circuits"
+    },
+    {
+      "name": "fuel",
+      "anchor": "U3",
+      "role": "core",
+      "side": "F",
+      "refs": [
+        "R36",
+        "R7",
+        "R8",
+        "U3"
+      ],
+      "why": "Functional local nets; shared rails do not group unrelated circuits"
+    },
+    {
+      "name": "esp_power",
+      "anchor": "U4",
+      "role": "power",
+      "side": "F",
+      "refs": [
+        "C24",
+        "C25",
+        "C5",
+        "C6",
+        "C9",
+        "L3",
+        "R10",
+        "R9",
+        "U4"
+      ],
+      "why": "Functional local nets; shared rails do not group unrelated circuits"
+    },
+    {
+      "name": "modem_power",
+      "anchor": "U5",
+      "role": "power",
+      "side": "F",
+      "refs": [
+        "C21",
+        "C23",
+        "C26",
+        "C27",
+        "C28",
+        "C29",
+        "C30",
+        "C33",
+        "C35",
+        "C36",
+        "C38",
+        "L4",
+        "QH2",
+        "QL2",
+        "R15",
+        "R18",
+        "R19",
+        "R20",
+        "R21",
+        "R22",
+        "R23",
+        "U5"
+      ],
+      "why": "Functional local nets; shared rails do not group unrelated circuits"
+    },
+    {
+      "name": "esp",
+      "anchor": "U7",
+      "role": "core",
+      "side": "F",
+      "refs": [
+        "C11",
+        "C12",
+        "C13",
+        "Q1",
+        "R13",
+        "R14",
+        "R24",
+        "R37",
+        "R5",
+        "R6",
+        "TP10",
+        "TP9",
+        "U7"
+      ],
+      "why": "Functional local nets; shared rails do not group unrelated circuits"
+    },
+    {
+      "name": "usb_uart",
+      "anchor": "U8",
+      "role": "core",
+      "side": "F",
+      "refs": [
+        "C18",
+        "Q2",
+        "R25",
+        "R26",
+        "R27",
+        "R31",
+        "R32",
+        "R33",
+        "R34",
+        "U8"
+      ],
+      "why": "Functional local nets; shared rails do not group unrelated circuits"
+    },
+    {
+      "name": "uart_gate",
+      "anchor": "U9",
+      "role": "core",
+      "side": "F",
+      "refs": [
+        "C14",
+        "C17",
+        "R28",
+        "R29",
+        "R30",
+        "U9"
+      ],
+      "why": "Functional local nets; shared rails do not group unrelated circuits"
+    },
+    {
+      "name": "level_shift",
+      "anchor": "U11",
+      "role": "core",
+      "side": "F",
+      "refs": [
+        "C15",
+        "C16",
+        "C40",
+        "C41",
+        "U11"
+      ],
+      "why": "Functional local nets; shared rails do not group unrelated circuits"
+    },
+    {
+      "name": "modem",
+      "anchor": "U10",
+      "role": "core",
+      "side": "F",
+      "refs": [
+        "C39",
+        "C43",
+        "C68",
+        "D2",
+        "Q3",
+        "U10"
+      ],
+      "why": "Functional local nets; shared rails do not group unrelated circuits"
+    },
+    {
+      "name": "sim",
+      "anchor": "Card1",
+      "role": "interface",
+      "side": "F",
+      "refs": [
+        "C44",
+        "C45",
+        "C46",
+        "C47",
+        "Card1",
+        "R35",
+        "R39",
+        "R40",
+        "R41",
+        "R42"
+      ],
+      "why": "Functional local nets; shared rails do not group unrelated circuits"
+    },
+    {
+      "name": "sd",
+      "anchor": "J_SD1",
+      "role": "interface",
+      "side": "F",
+      "refs": [
+        "J_SD1",
+        "R16",
+        "R49",
+        "R50",
+        "R51",
+        "R52"
+      ],
+      "why": "Functional local nets; shared rails do not group unrelated circuits"
+    },
+    {
+      "name": "usb",
+      "anchor": "USBC1",
+      "role": "interface",
+      "side": "F",
+      "refs": [
+        "D1",
+        "R11",
+        "R12",
+        "USBC1"
+      ],
+      "why": "Functional local nets; shared rails do not group unrelated circuits"
+    },
+    {
+      "name": "lte_rf",
+      "anchor": "J_LTE1",
+      "role": "interface",
+      "side": "F",
+      "refs": [
+        "C1",
+        "C32",
+        "C34",
+        "C48",
+        "C49",
+        "J_LTE1",
+        "R38",
+        "R43",
+        "U6"
+      ],
+      "why": "Functional local nets; shared rails do not group unrelated circuits"
+    },
+    {
+      "name": "gnss_rf",
+      "anchor": "J_GNSS1",
+      "role": "interface",
+      "side": "F",
+      "refs": [
+        "C22",
+        "C31",
+        "C37",
+        "C50",
+        "C51",
+        "C52",
+        "J_GNSS1",
+        "R44"
+      ],
+      "why": "Functional local nets; shared rails do not group unrelated circuits"
+    },
+    {
+      "name": "battery",
+      "anchor": "U2",
+      "role": "interface",
+      "side": "F",
+      "refs": [
+        "U2"
+      ],
+      "why": "Functional local nets; shared rails do not group unrelated circuits"
+    }
+  ]
+}

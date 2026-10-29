@@ -1,0 +1,30 @@
+# KiCad local/editor state
+*.kicad_prl
+*.kicad_pcb-bak
+*.kicad_sch-bak
+*.kicad_pro-bak
+*.lck
+~*.lck
+~$*
+*-backups/
+fp-info-cache
+*.bak
+# Python/native build caches
+__pycache__/
+*.py[cod]
+# Large reproducible agent output remains on disk, not in Git
+agent/companion/checkpoints/
+agent/companion/backups/
+agent/companion/routing/
+agent/companion/archive/
+agent/companion/tools/
+# Keep selected concise evidence explicitly added when useful
+agent/companion/reports/*.png
+agent/companion/reports/*.svg
+agent/companion/reports/*.pdf
+agent/companion/reports/*.xml
+agent/companion/reports/*drc.json
+agent/companion/reports/*erc.json
+# Tooling downloads and logs
+*.log
+*.jar

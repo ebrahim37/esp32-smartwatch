@@ -1,0 +1,358 @@
+24
+SMT
+24-hour PCB production. Fast Delivery to United States.
+ Coupons
+ Download APP
+USD 
+JLCPCB
+Products
+Capabilities
+Support 
+About Us 
+Order Now
+Sign In
+PCB Assembly Capabilities
+Comprehensive PCB assembly capabilities for SMT, THT, and mixed-technology builds with rigorous inspection for prototypes, NPI, and volume production.
+Get Instant Quote
+Rigid PCB Capabilities
+Flex PCB Capabilities
+PCBA Capabilities
+Stencil Capabilities
+PCB Layout Capabilities
+Flexible Heaters Capabilities
+PCB Assembly Technical Capabilities
+Features	Economic PCBA	Standard PCBA
+Assembly Types
+	
+
+Single sided placement (SMT/Thru-hole)
+
+	
+
+Single & double sided placement (SMT/Thru-hole)
+
+
+
+PCB Layer
+	
+
+2,4,6-layers
+
+	
+
+1 - 32 layers
+
+
+
+Thickness
+	
+
+0.8mm - 1.6mm
+
+	
+
+No limit
+
+
+
+Dimension
+	
+
+Single PCB Size:
+
+10x10mm - 470x500mm
+
+PCB Panel Size:
+
+10x10mm - 250x250mm
+
+	
+
+Single PCB Size:
+
+70x70mm - 460x500mm
+
+PCB Panel Size:
+
+70x70mm - 250x250mm
+
+
+
+Order Volume
+	
+
+2 - 50 pcs
+
+	
+
+2 - 80000 pcs
+
+
+
+Surface Finish
+	
+
+Limited by specific options
+
+(Refer to the options for Economic PCBA in the table below)
+
+	
+
+No limit
+
+
+
+PCB Color
+	
+
+Limited by specific options
+
+(Refer to the options for Economic PCBA in the table below)
+
+	
+
+No limit
+
+
+
+Delivery Format
+	
+
+Single PCB, Panel with mouse bites
+
+	
+
+Single PCB, Panel with mouse bites, Panel with V-cut
+
+
+
+Layer Stackup
+	
+
+Standard stack-up only, special stack-up is not supported
+
+	
+
+All stack-up
+
+
+
+Gold Fingers/Castellated Holes/Edge Plating
+	
+
+Not Support
+
+	
+
+Support
+
+
+
+Edge Rails
+	
+
+Not necessary
+
+	
+
+Necessary
+
+
+
+Fiducials
+	
+
+Not necessary
+
+	
+
+Necessary
+
+
+
+Minimum Package
+	
+
+0402
+
+	
+
+01005
+
+
+
+Minimum IC Pin Spacing
+	
+
+0.4mm
+
+	
+
+0.35mm
+
+
+
+Minimum BGA Spacing
+	
+
+0.5mm(center to center)
+
+	
+
+0.3mm(center to center)
+
+
+
+Reflow temperature
+	
+
+255+/-5 °C （not adjustable)
+
+	
+
+240+/-5 °C
+
+
+
+SPI
+	
+
+No
+
+	
+
+Yes
+
+
+
+AOI
+	
+
+Yes
+
+	
+
+Yes
+
+
+
+Visual Inspection
+	
+
+Yes
+
+	
+
+Yes
+
+
+
+X-ray Inspection
+	
+
+Yes (only for certain parts, such as BGA)
+
+	
+
+Yes (only for certain parts, such as BGA)
+
+
+
+Build time
+	
+
+1 - 3 days
+
+	
+
+≥ 4 days
+
+PCB Specs for Economic PCB Assembly
+FAQs about JLCPCB PCB Assembly Capabilities
+What are the minimum and maximum board sizes supported for PCBA?
+Single PCB Assembly
+Standard PCBA: 70 × 70 mm to 460 × 500 mm
+Economic PCBA: 10 × 10 mm to 470 × 500 mm
+Panelized PCB Assembly
+Standard PCBA: 70 × 70 mm to 250 × 250 mm
+Economic PCBA: 10 × 10 mm to 250 × 250 mm
+For panelized PCBs, larger panels are more susceptible to bending and deformation during SMT processing. Therefore, we recommend keeping panel dimensions within 250 × 250 mm whenever possible.
+If your panel slightly exceeds the recommended size and the design requires it, production may still be feasible.
+Why is the maximum panel size for PCBA much smaller than the maximum single-board size?
+Does JLCPCB charge extra tooling for flex PCB assembly, and are there any placement limitations around bend areas?
+Do you support FPC (Flexible PCB) assembly?
+What is the maximum PCB panel size for assembly?
+Can you assemble THT components? Do you support mixed assembly (SMD + THT)?
+What happens to unused through-holes during THT assembly? Will they be filled with solder?
+Do you support fine-pitch ICs such as BGA and QFN?
+Can JLCPCB manufacture and assemble 01005-size components?
+Do you provide X-ray inspection for hidden solder joints?
+Can you solder wires to a PCB for a power connection, like this? The wire is 22 AWG, 300 V rated, and 150 mm long. Can I create a part number for this wire?
+Do you offer MCU programming? Can I send a .hex file to program the MCU before it is soldered onto the PCB?
+Can JLCPCB assemble stacked components, such as a DIP IC inserted into a DIP socket, or a microcontroller mounted on a pin header/socket assembly?
+Turn Your Design into Assembled PCBs
+
+High-precision PCB assembly from prototype to mass production. Instant quote with full DFM validation.
+
+See PCB Assembly FAQs
+Get Instant Quote
+Online Chat >
+Chat with our live agent for fast reply.
+Mon-Fri: 24 hours, Sat: 9am-6pm, GMT+8
+Email Us >
+Contact us at supportjlcpcb.com
+Typically reply within hours.
+Help Center >
+Get instant answers.
+24/7 Available.
+Products
+FR-4 PCBs
+Flexible PCBs
+Metal Core PCBs
+High-Frequency PCBs
+PCBA Service
+PCB Layout
+SMT Stencil
+Flex Heater
+Support
+Help Center
+Contact Us
+Community
+Shipping & Delivery
+Payment Methods
+How to Order
+How to Track
+After-Sales Service
+Blog
+Company
+About Us
+Quality Assurance
+How We Work
+Certifications
+Security
+Environment
+JLCAPI
+News
+Cooperation
+Electronics
+EasyEDA
+JLCPCB
+JLCDFM
+LCSC
+OSHWLAB
+Mechanical
+JLC3DP
+JLCCNC
+JLCMC
+Order on JLCONE Desktop, Save $1–$20 Every Time
+Windows
+MAC
+Android
+IOS
+CONNECT WITH US
+© 2026 JLCPCB.COM All Rights Reserved.
+Privacy Policy
+Terms & Conditions
+Cookies Policy
+Do Not Sell or Share My Personal Information
+ Welcome back, may I help you? Chat Now
