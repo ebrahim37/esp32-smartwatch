@@ -21,7 +21,10 @@ elif stage=='usb':
 elif stage=='signals':
     args=['py_router/route.py',str(BOARD),'--overwrite','--nets','*','!/Modem/*_ANT','!Net-(J_LTE1-SIN)','!Net-(J_GNSS1-SIN)','!Net-(C50-Pad1)','--layers','F.Cu','In2.Cu','B.Cu','--track-width','.15','--grid-step','.05','--max-ripup','40','--max-iterations','400000','--power-nets','GND','/Power/USB_5V','/Power/VBAT','/Power/VSYS','/Modem/MODEM_3V8','/ESP32/SYS_3V3','/Power/LTE_SW*','--power-nets-widths','.4','1','1.2','1.2','1.2','.5','1.2','--write-fill','--json-out',str(LOGS/'signals-summary.json')]+common
 else:raise SystemExit('Expected planes, power, usb, or signals')
-cmd=['/usr/bin/python3',str(TOOL/args[0]),*args[1:],*extra];start=time.time();print('Executing',cmd,flush=True)
+entry=TOOL/args[0]
+if not entry.is_file():
+    raise SystemExit(f'Missing KiCadRoutingTools entry point: {entry}. Restore the real tool checkout under agent/companion/tools/KiCadRoutingTools.')
+cmd=[sys.executable,str(entry),*args[1:],*extra];start=time.time();print('Executing',cmd,flush=True)
 with (LOGS/(stage+'.log')).open('w') as out:
     out.write('COMMAND '+json.dumps(cmd)+'\n');out.flush();result=subprocess.run(cmd,cwd=ROOT.parent,stdout=out,stderr=subprocess.STDOUT)
 (LOGS/(stage+'-run.json')).write_text(json.dumps(dict(command=cmd,returncode=result.returncode,seconds=time.time()-start),indent=2))

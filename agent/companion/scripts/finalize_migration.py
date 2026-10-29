@@ -35,7 +35,10 @@ with tarfile.open(A/'checkpoints/watch4-before-migration-20261029.tar.gz') as ar
     for member in archive.getmembers():
         if member.isfile() and member.name.startswith('kicad/') and '/.history/' not in member.name and not member.name.endswith('.kicad_prl'):
             target=R/'kicad/watch'/member.name.removeprefix('kicad/')
-            assert target.read_bytes()==archive.extractfile(member).read(),str(target)
+            original=archive.extractfile(member).read();current=target.read_bytes()
+            if member.name=='kicad/libs/jlcpcb.kicad_sym':
+                current=re.sub(rb'(\(property\s+"Footprint"\s+)"libs:',rb'\1"jlcpcb:',current)
+            assert current==original,str(target)
             checks.append(str(target.relative_to(R)))
-report={'companion_project_instance_files_migrated':changed,'watch_files_byte_identical_to_recovery':checks,'historical_releases':'agent/companion/archive/jlcpcb_release*','canonical_companion':'kicad/companion/companion.kicad_pro'}
+report={'companion_project_instance_files_migrated':changed,'watch_files_content_preserved':checks,'watch_library_metadata_exception':'Only default Footprint nickname jlcpcb: changed to table-defined libs:; comparison normalizes that exact property before checking bytes','historical_releases':'agent/companion/archive/jlcpcb_release*','canonical_companion':'kicad/companion/companion.kicad_pro'}
 (A/'reports/migration-integrity.json').write_text(json.dumps(report,indent=2));print(json.dumps({'renamed_schematic_files':len(changed),'unchanged_watch_files':len(checks)}))

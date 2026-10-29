@@ -1,11 +1,20 @@
 #!/usr/bin/python3
 """Logged finite autorouter run: success file, crash, exit and wall-time gates."""
-import pathlib,subprocess,time,selectors,sys,json
+import pathlib,subprocess,time,selectors,sys,json,shutil
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 repair='--repair' in sys.argv;revision='--revision' in sys.argv;name='revision' if revision else 'repair' if repair else 'companion'
 out=ROOT/('routing/'+name+'.ses');logpath=ROOT/('routing/freerouting-'+name+'.log')
 version='2.1.0' if repair else '2.5.0'
-cmd=['java','-Xmx1024m','-Xss8m','-jar','/tmp/freerouting-'+version+'.jar','--gui.enabled=false','--user_data_path='+str(ROOT/('routing/settings-'+name)),'-da','--profile.allow_telemetry=false','--profile.allow_contact=false','-de',str(ROOT/('routing/'+name+'.dsn')),'-do',str(out),'-mp','60','-mt','0']
+jar=ROOT/'tools'/('freerouting-'+version+'.jar')
+if not jar.is_file():
+    raise SystemExit(f'Missing FreeRouting {version}: install the official freerouting-{version}.jar at {jar}. No router has been run.')
+java=shutil.which('java')
+if java is None:
+    raise SystemExit('Missing Java runtime: install Java compatible with the selected FreeRouting release and put java on PATH.')
+dsn=ROOT/('routing/'+name+'.dsn')
+if not dsn.is_file():
+    raise SystemExit(f'Missing routing input: {dsn}. Export the matching companion DSN before running the router.')
+cmd=[java,'-Xmx1024m','-Xss8m','-jar',str(jar),'--gui.enabled=false','--user_data_path='+str(ROOT/('routing/settings-'+name)),'-da','--profile.allow_telemetry=false','--profile.allow_contact=false','-de',str(dsn),'-do',str(out),'-mp','60','-mt','0']
 if repair:cmd.extend(['--router.fanout.enabled=false','-inc','POWER_HIGH,POWER_3V3,RF_50R'])
 else:cmd.append('--router.layers.routable=true,false,true,true')
 print(' '.join(cmd),flush=True)

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "board": "watch.kicad_pcb",
+  "board": "companion.kicad_pcb",
   "groups": [
     {
       "name": "charger",

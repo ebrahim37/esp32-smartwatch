@@ -2,20 +2,36 @@
 """Measure saved PCB pad support and calibrated VRML body envelopes in 3D.
 AABB exclusion is conservative; it does not certify RF or unprovided cell tolerances.
 """
-import pathlib,re,json,math,collections
+import pathlib,re,json,math,collections,os,sys,shutil
 import numpy as np
 import pcbnew as p
 from shapely.geometry import box,Polygon
-ROOT=pathlib.Path(__file__).resolve().parents[1];cfg=json.loads((ROOT/'scripts/layout-revision.json').read_text());b=p.LoadBoard(str(ROOT.parents[1] / 'kicad/companion/companion.kicad_pcb'));to=p.ToMM;O=cfg['origin'];W,H=cfg['size']
+ROOT=pathlib.Path(__file__).resolve().parents[1]
+tool=ROOT/'tools/KiCadRoutingTools'
+for required in ('py_router/kicad_parser.py','py_placer/placement/heights.py'):
+    if not (tool/required).is_file():
+        raise SystemExit(f'Missing KiCadRoutingTools dependency: {tool/required}. Restore the real tool checkout under agent/companion/tools/KiCadRoutingTools.')
+sys.path[:0]=[str(tool/'py_router'),str(tool/'py_placer')]
+try:
+    from kicad_parser import parse_kicad_pcb
+    from placement.heights import for_board
+except ImportError as error:
+    raise SystemExit(f'Cannot load KiCadRoutingTools mechanical reader: {error}. Install the dependencies in {tool/"requirements.txt"} using this Python interpreter.') from error
+cli=shutil.which('kicad-cli')
+if cli is None:
+    raise SystemExit('Missing kicad-cli: install KiCad and put kicad-cli on PATH for real GLB height extraction.')
+model_root=pathlib.Path(cli).resolve().parents[1]/'share/kicad/3dmodels'
+cfg=json.loads((ROOT/'scripts/layout-revision.json').read_text());b=p.LoadBoard(str(ROOT.parents[1] / 'kicad/companion/companion.kicad_pcb'));to=p.ToMM;O=cfg['origin'];W,H=cfg['size']
 parts=[];missing=[];unsupported=[]
 for f in b.GetFootprints():
     ref=f.GetReference();world=[]
     for mod in f.Models():
         name=mod.m_Filename.replace('${KIPRJMOD}',str(ROOT.parents[1] / 'kicad/companion'))
         for env in ('KICAD9_3DMODEL_DIR','KICAD10_3DMODEL_DIR'):
-            name=name.replace('${'+env+'}','/usr/share/kicad/3dmodels')
-        filename=pathlib.Path(name)
-        if not filename.exists():continue
+            name=name.replace('${'+env+'}',os.environ.get(env,str(model_root)))
+        filename=pathlib.Path(os.path.expandvars(name))
+        if not filename.is_file():
+            raise SystemExit(f'Missing 3D model for {ref}: {mod.m_Filename} resolves to {filename}. Install the matching KiCad model library or configure its KICAD*_3DMODEL_DIR environment variable.')
         if filename.suffix.lower()!='.wrl':continue
         pts=[]
         for raw in re.findall(r'point\s*\[([^]]+)\]',filename.read_text()):
@@ -39,11 +55,6 @@ for f in b.GetFootprints():
 # KiCad's own GLB export resolves the standard STEP models that are not VRML.
 # Reuse KRT's calibrated mesh-height reader; XY remains a conservative occupied
 # envelope for these ordinary SMT passives, not a fabricated detailed solid.
-import sys
-tool=ROOT/'tools/KiCadRoutingTools'
-sys.path[:0]=[str(tool/'py_router'),str(tool/'py_placer')]
-from kicad_parser import parse_kicad_pcb
-from placement.heights import for_board
 heights=for_board(parse_kicad_pcb(str(ROOT.parents[1] / 'kicad/companion/companion.kicad_pcb')),str(ROOT.parents[1] / 'kicad/companion/companion.kicad_pcb'))
 remaining=[]
 for ref in missing:
