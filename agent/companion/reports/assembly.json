@@ -1,0 +1,21 @@
+{
+  "footprints": 129,
+  "populated": 123,
+  "dnp": [
+    "C48",
+    "C49",
+    "C50",
+    "C51"
+  ],
+  "bare_testpoints": [
+    "TP9",
+    "TP10"
+  ],
+  "catalog_identities": 56,
+  "assembly_anomalies": [],
+  "missing_populated_mpn": [],
+  "stock_verified": false,
+  "cpl_rotation": "KiCad orientation in board coordinates; require JLC preview correction per exact part before ordering",
+  "missing_populated_manufacturer": [],
+  "populated_lcsc_codes": 55
+}

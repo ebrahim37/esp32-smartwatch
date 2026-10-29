@@ -422,12 +422,26 @@
   "C148107": {
     "url": "https://jlcpcb.com/partdetail/C148107",
     "mpn": "TPSB107M010R0400",
-    "manufacturer": "--",
+    "manufacturer": "Kyocera AVX",
+    "manufacturer_source": "https://www.lcsc.com/product-detail/C148107.html",
+    "manufacturer_verified_date": "2026-10-29",
     "description": "TPSB107M010R0400 - -55℃~+125℃ 100uF 10V 400mΩ@100kHz ±20% CASE-B-3528-21(mm) Tantalum Capacitors ROHS. Check prices, specs, datasheet, and order now!",
     "pcba": "Economic and Standard",
     "assembly": "SMT Assembly",
     "identity_verified": true,
     "stock": "Not verified; no order matching screen checked"
+  },
+  "C2117579": {
+    "url": "https://jlcpcb.com/partdetail/VishayIntertech-MCS04020C5492FE000/C2117579",
+    "mpn": "MCS04020C5492FE000",
+    "manufacturer": "Vishay Intertech",
+    "description": "54.9kOhm 1% 50ppm/K 100mW 50V 0402 thin film resistor",
+    "pcba": "Economic and Standard",
+    "assembly": "SMT Assembly",
+    "identity_verified": true,
+    "stock": "Not verified; no order matching screen checked",
+    "verified_date": "2026-10-29",
+    "replaces": "R19: same 54.9kOhm 1% 0402 value/package, avoids C54530922 Wave Soldering classification"
   },
   "C1562": {
     "url": "https://jlcpcb.com/partdetail/C1562",

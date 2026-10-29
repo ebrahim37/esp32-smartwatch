@@ -34,3 +34,14 @@ Files are named by manufacturer and part number. Existing release copies were de
 - The exact mating battery housing/crimp, cell data sheet, protection-circuit specification, and battery safety documents are not selected.
 - The exact display part designation must be reconciled before procurement.
 - Generic 3D models are not substitutes for package drawings or tolerance data.
+
+## Companion updates — 2026-10-29
+
+The gaps above describe the original watch sourcing review; they do not override the companion-specific records in `../agent/companion/research/`.
+
+- `FH_0402CG121J500NT_C40059_MLCC.pdf`: restored FH general-series MLCC specification from the selected [C40059 part record](https://www.lcsc.com/product-detail/C40059.html) and [actual PDF download](https://datasheet.lcsc.com/datasheet/pdf/09fe2daf22580a99fa7fea93ccb20fb7.pdf?productCode=C40059). Both relocated projects use `${KIPRJMOD}/../../datasheets/` for this document.
+- Companion external antennas are selected: Quectel **YPCA004AA LTE** and **YFGA003AA GNSS**. Official drawings are retained under `../agent/companion/research/`; enclosure placement, coax routing, dimensional tolerances and the RF1/U.FL mating uncertainty are documented in `mechanical-revision.md`.
+- The companion battery connector is the **Molex 2053380002**, not an assumed JST replacement. Its retained drawing is listed above; a purchased mating harness, polarity, wire gauge and strain relief still require acceptance.
+- C39/C68 **Kyocera AVX TPSB107M010R0400 / C148107** identity is confirmed by [LCSC](https://www.lcsc.com/product-detail/C148107.html). R19 uses verified SMT **Vishay MCS04020C5492FE000 / C2117579**; see `../agent/companion/reports/sourcing-recheck.md`.
+- Cell maximum/swollen dimensions, loaded thermal/RF qualification, and final supplier assembly/POFV approval remain unverified. Retained source documents and 3D envelopes do not establish those measurements.
+

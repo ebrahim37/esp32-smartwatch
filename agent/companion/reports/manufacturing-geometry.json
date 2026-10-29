@@ -1,0 +1,1200 @@
+{
+  "source_sha256": "fbb63cfd8b44c5fcee6e3ffb4ac39eb5691c300ae6abe6af073195a0d0c7b87e",
+  "outline_valid": true,
+  "dimensions_mm": [
+    82.0,
+    38.5
+  ],
+  "thickness_mm": 0.8,
+  "copper_layers": 4,
+  "footprints": 129,
+  "top": 129,
+  "bottom": 0,
+  "unsupported_native_pad_polygons": [],
+  "courtyard_overlaps": [],
+  "total_vias": 358,
+  "via_in_pad_count": 54,
+  "centered_via_in_pad_count": 10,
+  "annulus_overhang_count": 43,
+  "unfilled_or_uncapped_via_in_pad": [],
+  "via_in_pad": [
+    {
+      "uuid": "c81452ca-c845-4165-8b00-ae479a0adc31",
+      "net": "/Power/LTE_SW1",
+      "pos_mm": [
+        78.88,
+        58.0
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "L4.1"
+      ],
+      "annulus_outside_land_area_mm2": 0.0,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "14625c65-ca5b-485e-a547-ef17cdf0f2ab",
+      "net": "GND",
+      "pos_mm": [
+        71.8,
+        77.4
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "U1.6"
+      ],
+      "annulus_outside_land_area_mm2": 0.1484556318061908,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "180a8934-9983-4506-85f4-3b37b26c1cea",
+      "net": "GND",
+      "pos_mm": [
+        82.55,
+        81.91
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": true,
+      "pads": [
+        "Card1.C5"
+      ],
+      "annulus_outside_land_area_mm2": 0.0,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "5cda6e1f-59bc-48ac-8444-49622f72cdb7",
+      "net": "GND",
+      "pos_mm": [
+        117.6,
+        83.65
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "U8.25"
+      ],
+      "annulus_outside_land_area_mm2": 0.0,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "64c5244a-9d39-4899-a2c7-ac8447503a07",
+      "net": "GND",
+      "pos_mm": [
+        71.1,
+        70.6
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "C2.2"
+      ],
+      "annulus_outside_land_area_mm2": 0.17348059983621875,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "686704ed-3646-4733-afe7-e96b339ace32",
+      "net": "GND",
+      "pos_mm": [
+        87.5,
+        66.05
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "U5.9"
+      ],
+      "annulus_outside_land_area_mm2": 0.16866981254724037,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "6a727e3b-c1d2-4175-97a3-654af4ff5950",
+      "net": "GND",
+      "pos_mm": [
+        74.9,
+        75.05
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "U1.25"
+      ],
+      "annulus_outside_land_area_mm2": 0.0,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "7ee8dcf2-4856-49c3-a123-8ec7668d5afc",
+      "net": "GND",
+      "pos_mm": [
+        77.275,
+        69.25
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": true,
+      "pads": [
+        "C5.2"
+      ],
+      "annulus_outside_land_area_mm2": 0.0,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "a2ee9b41-d577-46dc-be3d-a2bdfee0371f",
+      "net": "GND",
+      "pos_mm": [
+        117.05,
+        84.25
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "U8.25"
+      ],
+      "annulus_outside_land_area_mm2": 0.0,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "a66c148e-983f-40df-b944-8e94c9be0572",
+      "net": "GND",
+      "pos_mm": [
+        74.7,
+        63.85
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "U4.2"
+      ],
+      "annulus_outside_land_area_mm2": 0.17148105364836047,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "a9cac7fd-d558-4086-a7b4-473ace980d99",
+      "net": "GND",
+      "pos_mm": [
+        92.8,
+        68.55
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "R23.2"
+      ],
+      "annulus_outside_land_area_mm2": 0.024530359338389457,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "b46a22b4-4f8a-4b4a-ba74-b19082b05ad2",
+      "net": "GND",
+      "pos_mm": [
+        65.5,
+        72.26
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": true,
+      "pads": [
+        "R2.1"
+      ],
+      "annulus_outside_land_area_mm2": 0.010439537053533197,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "b9862d5e-0b08-449a-8094-998b4eecdc52",
+      "net": "GND",
+      "pos_mm": [
+        51.45,
+        58.5
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "C13.1"
+      ],
+      "annulus_outside_land_area_mm2": 0.0943627599709213,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "4c787836-29d2-48dd-a720-0ba6e3a28e72",
+      "net": "/Power/VBAT",
+      "pos_mm": [
+        75.45,
+        56.55
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "U3.2"
+      ],
+      "annulus_outside_land_area_mm2": 0.19216225325070996,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "472b82e3-e1bb-47ca-a5fa-a61f8ddb5e74",
+      "net": "Net-(D1-D2+)",
+      "pos_mm": [
+        125.475,
+        81.325
+      ],
+      "diameter_mm": 0.35,
+      "drill_mm": 0.2,
+      "centered": false,
+      "pads": [
+        "D1.4"
+      ],
+      "annulus_outside_land_area_mm2": 0.031020053272391428,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "3887e5d7-4cd9-4fc2-96e1-c7264fa4951a",
+      "net": "/ESP32/SYS_3V3",
+      "pos_mm": [
+        64.35,
+        72.1
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "R49.1"
+      ],
+      "annulus_outside_land_area_mm2": 0.10015508364293382,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "4bc5948c-d7f9-4233-9111-bcc463c5f256",
+      "net": "/ESP32/SYS_3V3",
+      "pos_mm": [
+        73.85,
+        68.45
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "R14.2"
+      ],
+      "annulus_outside_land_area_mm2": 0.04467488847986123,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "905b681b-34f4-4b4e-8873-3eb89aa86ca2",
+      "net": "/ESP32/SYS_3V3",
+      "pos_mm": [
+        53.55,
+        52.5
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "U7.2"
+      ],
+      "annulus_outside_land_area_mm2": 0.012861601781405716,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "9959f540-aa6f-493d-af94-ce36e10ca7f5",
+      "net": "/ESP32/SYS_3V3",
+      "pos_mm": [
+        103.8,
+        81.45
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "U11.1"
+      ],
+      "annulus_outside_land_area_mm2": 0.23843791191449348,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "ad64de3b-b1e5-4ee2-ba90-2e0af327e136",
+      "net": "/ESP32/SYS_3V3",
+      "pos_mm": [
+        108.75,
+        84.95
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "U9.8"
+      ],
+      "annulus_outside_land_area_mm2": 0.2111866936557559,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "d30dbaf3-0f3e-4f7c-8e0c-6c570aea3ff5",
+      "net": "/ESP32/SYS_3V3",
+      "pos_mm": [
+        78.75,
+        70.52
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": true,
+      "pads": [
+        "C58.2"
+      ],
+      "annulus_outside_land_area_mm2": 0.0056752792928769155,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "1a5afa72-7dbe-4ba2-9c71-2df45ce748d1",
+      "net": "/Power/VSYS",
+      "pos_mm": [
+        73.3,
+        71.7
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": true,
+      "pads": [
+        "L3.2"
+      ],
+      "annulus_outside_land_area_mm2": 0.0,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "46f2ff1d-80c2-4e4c-bbd4-b72193e16c4a",
+      "net": "/Power/VSYS",
+      "pos_mm": [
+        75.8,
+        69.6
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "C5.1"
+      ],
+      "annulus_outside_land_area_mm2": 0.07067853719792909,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "bd4944f0-56a6-4356-ab58-ef2b7bf76618",
+      "net": "/Power/VSYS",
+      "pos_mm": [
+        74.75,
+        65.475
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": true,
+      "pads": [
+        "C9.2"
+      ],
+      "annulus_outside_land_area_mm2": 0.0,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "c6553791-c930-46d1-8f9d-2d2b9ce30302",
+      "net": "/Power/VSYS",
+      "pos_mm": [
+        82.5,
+        64.94
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": true,
+      "pads": [
+        "QH2.8"
+      ],
+      "annulus_outside_land_area_mm2": 0.0,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "f19459fd-1ba3-487d-a676-17bd92cde325",
+      "net": "/Power/VSYS",
+      "pos_mm": [
+        76.0,
+        75.95
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "U1.16"
+      ],
+      "annulus_outside_land_area_mm2": 0.17097978557571264,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "fb0cda35-6d8a-469f-bce6-44809e753771",
+      "net": "/Power/VSYS",
+      "pos_mm": [
+        75.75,
+        68.85
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "C5.1"
+      ],
+      "annulus_outside_land_area_mm2": 0.0976911519510031,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "6f9448c6-048c-4482-a98f-163a433db47f",
+      "net": "/ESP32/I2C_SDA",
+      "pos_mm": [
+        75.7,
+        54.3
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "R8.1"
+      ],
+      "annulus_outside_land_area_mm2": 0.18939693855046663,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "9cb742b6-42bd-4336-9f69-13a6048079b3",
+      "net": "/USB/CP_UART_ACTIVE",
+      "pos_mm": [
+        115.0,
+        83.75
+      ],
+      "diameter_mm": 0.3,
+      "drill_mm": 0.15,
+      "centered": true,
+      "pads": [
+        "U8.15"
+      ],
+      "annulus_outside_land_area_mm2": 0.0014188198232194342,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "0e4bdcf9-b280-4f12-890b-1477b98b7a0c",
+      "net": "/Modem/MODEM_3V8",
+      "pos_mm": [
+        97.55,
+        62.9
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "C39.1"
+      ],
+      "annulus_outside_land_area_mm2": 0.008020896454619184,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "22210b89-6745-4198-bcaf-01b2025fcf80",
+      "net": "/Modem/MODEM_3V8",
+      "pos_mm": [
+        88.75,
+        64.35
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "U5.26"
+      ],
+      "annulus_outside_land_area_mm2": 0.10688541558146275,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "50fd0c10-5a94-4890-bb3d-245c35b2a34c",
+      "net": "/Modem/MODEM_3V8",
+      "pos_mm": [
+        101.48,
+        57.0
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": true,
+      "pads": [
+        "C22.2"
+      ],
+      "annulus_outside_land_area_mm2": 0.005675279292876978,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "a5026947-36d0-402c-a6c3-d9903425de93",
+      "net": "/ESP32/ESP_EN",
+      "pos_mm": [
+        53.0,
+        53.85
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "U7.3"
+      ],
+      "annulus_outside_land_area_mm2": 0.14171522401726733,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "0846fecd-e329-4f8c-b9e4-9e635bc812ff",
+      "net": "/Power/USB_5V",
+      "pos_mm": [
+        99.75,
+        78.45
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "C1.2"
+      ],
+      "annulus_outside_land_area_mm2": 0.02029561996339831,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "eb6f4d3b-760e-4d70-a086-e0093f524520",
+      "net": "/Power/USB_5V",
+      "pos_mm": [
+        118.2375,
+        81.5875
+      ],
+      "diameter_mm": 0.3,
+      "drill_mm": 0.15,
+      "centered": false,
+      "pads": [
+        "U8.7"
+      ],
+      "annulus_outside_land_area_mm2": 0.04733571659408143,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "f91dd7f9-4585-48ef-915a-bd7f9b5fb742",
+      "net": "/Power/USB_5V",
+      "pos_mm": [
+        109.6125,
+        86.2375
+      ],
+      "diameter_mm": 0.3,
+      "drill_mm": 0.15,
+      "centered": false,
+      "pads": [
+        "R26.2"
+      ],
+      "annulus_outside_land_area_mm2": 0.054813254368078705,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "668b8f09-4d13-4414-8c15-3f7ab7fd8537",
+      "net": "/Modem/SIM_DATA",
+      "pos_mm": [
+        95.0,
+        65.75
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "R42.1"
+      ],
+      "annulus_outside_land_area_mm2": 0.01085853610105322,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "2601ece4-1a6a-4ce1-ab22-e99af0391547",
+      "net": "Net-(U10-VDD_EXT)",
+      "pos_mm": [
+        114.7,
+        81.05
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "C41.1"
+      ],
+      "annulus_outside_land_area_mm2": 0.18290793015344975,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "ac4ee0d3-6886-4898-a2e7-7dbf599928f5",
+      "net": "Net-(U10-MAIN_CTS)",
+      "pos_mm": [
+        105.85,
+        83.4
+      ],
+      "diameter_mm": 0.35,
+      "drill_mm": 0.2,
+      "centered": false,
+      "pads": [
+        "U11.7"
+      ],
+      "annulus_outside_land_area_mm2": 0.04802839876148429,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "e0479925-84b0-4f6f-8030-e387216f0a29",
+      "net": "/ESP32/MODEM_UART_RX_3V3",
+      "pos_mm": [
+        104.0125,
+        82.8875
+      ],
+      "diameter_mm": 0.3,
+      "drill_mm": 0.15,
+      "centered": false,
+      "pads": [
+        "U11.4"
+      ],
+      "annulus_outside_land_area_mm2": 0.01570819125700703,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "f4a62b27-87da-485b-bc9e-977141e12e27",
+      "net": "/ESP32/MODEM_UART_RX_3V3",
+      "pos_mm": [
+        77.55,
+        57.15
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "R36.2"
+      ],
+      "annulus_outside_land_area_mm2": 0.1255153530600194,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "23051952-7ef0-48d4-b1d5-153672df8c40",
+      "net": "/ESP32/MODEM_REG_EN",
+      "pos_mm": [
+        77.6,
+        59.55
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "R21.1"
+      ],
+      "annulus_outside_land_area_mm2": 0.17313702811171916,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "d5618d76-462b-4d3e-9cb4-db83f340d657",
+      "net": "Net-(Q2-B)",
+      "pos_mm": [
+        101.25,
+        70.8
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "R32.2"
+      ],
+      "annulus_outside_land_area_mm2": 0.20680550936629008,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "297762b2-7a69-4b24-9c50-bf9d5061ba6f",
+      "net": "/USB/USB_DM",
+      "pos_mm": [
+        124.3125,
+        81.8625
+      ],
+      "diameter_mm": 0.3,
+      "drill_mm": 0.15,
+      "centered": false,
+      "pads": [
+        "USBC1.B7"
+      ],
+      "annulus_outside_land_area_mm2": 0.02383318308463726,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "413304f6-9fb8-4ac2-ada7-e9e334413404",
+      "net": "/USB/USB_DM",
+      "pos_mm": [
+        125.2375,
+        82.2875
+      ],
+      "diameter_mm": 0.3,
+      "drill_mm": 0.15,
+      "centered": false,
+      "pads": [
+        "USBC1.A7"
+      ],
+      "annulus_outside_land_area_mm2": 0.0009932773000451503,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "9c86078f-160c-46bd-b1e0-c35d5caf2ad8",
+      "net": "/ESP32/MODEM_PWRKEY_DRV",
+      "pos_mm": [
+        90.8,
+        70.15
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "R37.2"
+      ],
+      "annulus_outside_land_area_mm2": 0.22672007402711986,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "6d50508a-abc0-41aa-812e-a6af69c9530b",
+      "net": "/ESP32/SPI_IO0_MOSI",
+      "pos_mm": [
+        60.65,
+        71.65
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "R52.1"
+      ],
+      "annulus_outside_land_area_mm2": 0.07579761762352207,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "92e7369a-5f9e-485d-9f6c-40342519f061",
+      "net": "/ESP32/SPI_IO0_MOSI",
+      "pos_mm": [
+        61.85,
+        73.2
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "J_SD1.3"
+      ],
+      "annulus_outside_land_area_mm2": 0.10732083572544675,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "66e185ed-66b7-4ebe-b56d-9e8beae75f4e",
+      "net": "Net-(U5-FB)",
+      "pos_mm": [
+        92.0,
+        68.65
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "R23.1"
+      ],
+      "annulus_outside_land_area_mm2": 0.16321750476388375,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "8a8ff7e8-dc24-45a9-8106-8516753da5a6",
+      "net": "/ESP32/USB_POWER_GOOD_N",
+      "pos_mm": [
+        63.0,
+        70.5
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "R5.2"
+      ],
+      "annulus_outside_land_area_mm2": 0.11732635920909865,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "9576ee14-aef0-49ca-b576-76a52229b357",
+      "net": "Net-(U1-BTST)",
+      "pos_mm": [
+        74.25,
+        73.95
+      ],
+      "diameter_mm": 0.3,
+      "drill_mm": 0.15,
+      "centered": true,
+      "pads": [
+        "U1.21"
+      ],
+      "annulus_outside_land_area_mm2": 0.0,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "c9a111b8-4aea-4d74-818b-0e70894a67e0",
+      "net": "/ESP32/MODEM_PG",
+      "pos_mm": [
+        73.6,
+        54.35
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "R24.1"
+      ],
+      "annulus_outside_land_area_mm2": 0.10810516470882137,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "c2e40ae1-81fc-4c13-9e47-3edf091ab21f",
+      "net": "/ESP32/MODEM_UART_RTS_3V3",
+      "pos_mm": [
+        104.4125,
+        82.5125
+      ],
+      "diameter_mm": 0.3,
+      "drill_mm": 0.15,
+      "centered": false,
+      "pads": [
+        "U11.3"
+      ],
+      "annulus_outside_land_area_mm2": 0.015708191257010513,
+      "filled": true,
+      "capped": true
+    },
+    {
+      "uuid": "dafb869e-e25a-46c8-9413-ebbe83772a3e",
+      "net": "/ESP32/ESP_U0TX",
+      "pos_mm": [
+        71.85,
+        54.65
+      ],
+      "diameter_mm": 0.6,
+      "drill_mm": 0.3,
+      "centered": false,
+      "pads": [
+        "U7.35"
+      ],
+      "annulus_outside_land_area_mm2": 0.0,
+      "filled": true,
+      "capped": true
+    }
+  ],
+  "zones": [
+    {
+      "net": "/Modem/MODEM_3V8",
+      "layer": "F.Cu",
+      "priority": 34,
+      "filled_area_mm2": 4.004101172147999,
+      "islands": 1
+    },
+    {
+      "net": "/Power/USB_5V",
+      "layer": "F.Cu",
+      "priority": 22,
+      "filled_area_mm2": 1.590024638699511,
+      "islands": 1
+    },
+    {
+      "net": "/Power/VBAT",
+      "layer": "F.Cu",
+      "priority": 20,
+      "filled_area_mm2": 1.6301871787040014,
+      "islands": 1
+    },
+    {
+      "net": "/Power/VSYS",
+      "layer": "F.Cu",
+      "priority": 21,
+      "filled_area_mm2": 0.5284026059065036,
+      "islands": 3
+    },
+    {
+      "net": "/Modem/MODEM_3V8",
+      "layer": "F.Cu",
+      "priority": 24,
+      "filled_area_mm2": 7.194679384425995,
+      "islands": 1
+    },
+    {
+      "net": "/ESP32/SYS_3V3",
+      "layer": "F.Cu",
+      "priority": 23,
+      "filled_area_mm2": 3.385623801636499,
+      "islands": 1
+    },
+    {
+      "net": "/ESP32/SYS_3V3",
+      "layer": "F.Cu",
+      "priority": 32,
+      "filled_area_mm2": 3.542261427601,
+      "islands": 2
+    },
+    {
+      "net": "/Power/LTE_SW1",
+      "layer": "F.Cu",
+      "priority": 3,
+      "filled_area_mm2": 11.040695608431,
+      "islands": 2
+    },
+    {
+      "net": "/Power/VSYS",
+      "layer": "F.Cu",
+      "priority": 33,
+      "filled_area_mm2": 9.425689727302483,
+      "islands": 3
+    },
+    {
+      "net": "/Power/LTE_SW2",
+      "layer": "F.Cu",
+      "priority": 25,
+      "filled_area_mm2": 14.200686749196006,
+      "islands": 1
+    },
+    {
+      "net": "GND",
+      "layer": "F.Cu",
+      "priority": 0,
+      "filled_area_mm2": 1776.2624091562961,
+      "islands": 26
+    },
+    {
+      "net": "/Modem/MODEM_3V8",
+      "layer": "B.Cu",
+      "priority": 24,
+      "filled_area_mm2": 138.0164970953851,
+      "islands": 3
+    },
+    {
+      "net": "/Power/VBAT",
+      "layer": "B.Cu",
+      "priority": 20,
+      "filled_area_mm2": 15.305579499287493,
+      "islands": 3
+    },
+    {
+      "net": "/Power/LTE_SW2",
+      "layer": "B.Cu",
+      "priority": 25,
+      "filled_area_mm2": 11.059864860069478,
+      "islands": 1
+    },
+    {
+      "net": "/Power/LTE_SW1",
+      "layer": "B.Cu",
+      "priority": 30,
+      "filled_area_mm2": 78.32911126941258,
+      "islands": 1
+    },
+    {
+      "net": "/ESP32/SYS_3V3",
+      "layer": "B.Cu",
+      "priority": 23,
+      "filled_area_mm2": 16.331681899107,
+      "islands": 2
+    },
+    {
+      "net": "GND",
+      "layer": "B.Cu",
+      "priority": 0,
+      "filled_area_mm2": 2068.805832619378,
+      "islands": 17
+    },
+    {
+      "net": "/Power/USB_5V",
+      "layer": "B.Cu",
+      "priority": 22,
+      "filled_area_mm2": 104.36276461572548,
+      "islands": 4
+    },
+    {
+      "net": "/Power/VSYS",
+      "layer": "B.Cu",
+      "priority": 21,
+      "filled_area_mm2": 29.12249601708,
+      "islands": 7
+    },
+    {
+      "net": "GND",
+      "layer": "In1.Cu",
+      "priority": 0,
+      "filled_area_mm2": 2928.1888260184855,
+      "islands": 1
+    },
+    {
+      "net": "/Power/VSYS",
+      "layer": "In2.Cu",
+      "priority": 0,
+      "filled_area_mm2": 1034.596832147307,
+      "islands": 2
+    },
+    {
+      "net": "/Modem/MODEM_3V8",
+      "layer": "In2.Cu",
+      "priority": 0,
+      "filled_area_mm2": 1419.0479844292772,
+      "islands": 2
+    }
+  ],
+  "In1_GND_polygon_count": 1,
+  "battery_connector": [
+    {
+      "pin": "1",
+      "net": "/Power/VBAT",
+      "pos_mm": [
+        75.0,
+        80.1
+      ]
+    },
+    {
+      "pin": "2",
+      "net": "GND",
+      "pos_mm": [
+        77.0,
+        80.1
+      ]
+    },
+    {
+      "pin": "3",
+      "net": "unconnected-(U2-Pad3)",
+      "pos_mm": [
+        72.05,
+        86.1
+      ]
+    },
+    {
+      "pin": "4",
+      "net": "unconnected-(U2-Pad4)",
+      "pos_mm": [
+        79.95,
+        86.1
+      ]
+    }
+  ],
+  "POFV_below_2026_preferred_diameter": [],
+  "small_passive_pose_changes": [
+    {
+      "ref": "C30",
+      "before": [
+        90.0,
+        69.0,
+        0.0
+      ],
+      "after": [
+        90.3,
+        68.4,
+        0.0
+      ]
+    },
+    {
+      "ref": "C25",
+      "before": [
+        78.0,
+        67.0,
+        0.0
+      ],
+      "after": [
+        79.25,
+        74.25,
+        0.0
+      ]
+    },
+    {
+      "ref": "C10",
+      "before": [
+        79.25,
+        74.25,
+        0.0
+      ],
+      "after": [
+        77.9,
+        66.95,
+        0.0
+      ]
+    },
+    {
+      "ref": "C29",
+      "before": [
+        91.25,
+        63.5,
+        90.0
+      ],
+      "after": [
+        91.25,
+        63.5,
+        270.0
+      ]
+    },
+    {
+      "ref": "C33",
+      "before": [
+        96.75,
+        66.5,
+        90.0
+      ],
+      "after": [
+        88.55,
+        68.4,
+        270.0
+      ]
+    }
+  ],
+  "major_component_pose_changes": []
+}

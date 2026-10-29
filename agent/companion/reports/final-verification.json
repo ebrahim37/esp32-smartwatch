@@ -1,0 +1,44 @@
+{
+  "companion": {
+    "drc_errors": 0,
+    "drc_warnings": 0,
+    "unconnected_items": 0,
+    "schematic_parity": 0,
+    "erc_errors": 0,
+    "erc_warnings": 233,
+    "erc_categories": {
+      "pin_to_pin": 233
+    }
+  },
+  "watch": {
+    "drc_errors": 0,
+    "drc_warnings": 2,
+    "unconnected_items": 384,
+    "schematic_parity": 0,
+    "erc_errors": 0,
+    "erc_warnings": 0,
+    "erc_categories": {}
+  },
+  "inputs_sha256": {
+    "kicad/companion/01_power.kicad_sch": "f8da0bf4aa8645a356a0b458b9d741ddaee0679cafb82f562b5000ddd21901de",
+    "kicad/companion/02_esp32.kicad_sch": "6bfe69c38f81c6d435eab828076d57d94d74602d3715d598c100332ba3b323f8",
+    "kicad/companion/03_usb.kicad_sch": "b9cd617a2c1f9db0ed0d5e9ab7b8fbfaaa75675b68c7a659447ff5f470578fbf",
+    "kicad/companion/04_modem.kicad_sch": "1f85b300e4982e15fc35bbbd8f7f4163b9cd39320118e0bbe72b651c1c96e01d",
+    "kicad/companion/06_storage.kicad_sch": "1fa5f59784b92658add3d8a2531bef463e539053ef7b36e8e949c19b133abc93",
+    "kicad/companion/companion.kicad_pro": "0f9a4756b1525880ade4147f0b27392969e647e38c985e13d842a754800983f6",
+    "kicad/companion/companion.kicad_sch": "bf7f62fc7476643ecb2479f29a77b5e4e6c995f4bd93e1974bea5a6517bb7e78",
+    "kicad/companion/companion.kicad_pcb": "fbb63cfd8b44c5fcee6e3ffb4ac39eb5691c300ae6abe6af073195a0d0c7b87e",
+    "kicad/companion/companion.kicad_dru": "ccdef7963bb9286a8dc20209cfd427593e0d518e4b22f697426e1a7fa3e02cbc",
+    "kicad/watch/01_power.kicad_sch": "590f4397220782108e8bfd7222a0074c5cd95cee47b229d4395e6315270f3b46",
+    "kicad/watch/02_esp32.kicad_sch": "3aea5b22e7aef0b2d7c7e19f559e6a09e441e8f1b45140db508639a9cc2f8c6d",
+    "kicad/watch/03_usb.kicad_sch": "54d6ef22943d23d55f38088680a81878f44f4ca80a828f9ccc428e06d2ffc916",
+    "kicad/watch/04_modem.kicad_sch": "42805b99d8be84a9681fcd547d90771f24118a7c19d14f6cd9be0e3757c40794",
+    "kicad/watch/05_display.kicad_sch": "f16deb418e2e3b36d9cc1b482e5e5d59ced86b907e9756a78f9318152d46e0e2",
+    "kicad/watch/06_storage.kicad_sch": "a017fc707383569ea82e4c94fd48ceee845a4aff67e5a6905cccd04a76240a6f",
+    "kicad/watch/07_sensors_haptics.kicad_sch": "9e2b92678347bc2788a84cadebd86dff330733010af034a0bf3265da000a99b1",
+    "kicad/watch/watch.kicad_dru": "a3ca54be2f6ae61b357a9393aeef8ea0e991f77cf969b67417a632bf8ff90048",
+    "kicad/watch/watch.kicad_pcb": "a65b9c5d6bc77f4a40095b5dd84768447021e959e8c17bb93cd960157555da0c",
+    "kicad/watch/watch.kicad_pro": "8a79842826dd2e797f94f0a8d80d1aa54242382e0226b5df256888431895c11f",
+    "kicad/watch/watch.kicad_sch": "a3432f1ac2fce897d38736001f3b34d1170da33550803331ad6e70136840d77b"
+  }
+}

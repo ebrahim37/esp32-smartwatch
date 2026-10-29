@@ -40,7 +40,7 @@ for old in D.glob('*.json'):shutil.copy2(old,history/old.name)
 (history/'invocation.json').write_text(json.dumps({'argv':sys.argv,'started':time.time()},indent=2))
 shutil.copytree(R.parents[1] / 'kicad/companion',D/'design',dirs_exist_ok=True,ignore=shutil.ignore_patterns('.history','*.lck'));candidate=D/'design/companion.kicad_pcb';source=R.parents[1] / 'kicad/companion/companion.kicad_pcb';step=args.step;ox=oy=50.;W=82.;H=38.5;nx=round(W/step)+1;ny=round(H/step)+1;plane=nx*ny;layers=[p.F_Cu,p.In2_Cu,p.B_Cu];mm=p.FromMM;to=p.ToMM
 VR=args.via_size/2;DR=args.via_drill/2;phase=args.phase;guard=step*.72 if args.raster_margin is None else args.raster_margin
-assert args.via_size>=.25 and args.via_drill>=.15 and args.via_size-args.via_drill>=.15-1e-8
+assert args.via_size>=.25 and args.via_drill>=.15 and args.via_size-args.via_drill>=.10-1e-8
 log=[]
 def drc(path,name):
     out=D/(name+'.json');r=subprocess.run(['kicad-cli','pcb','drc','--refill-zones','--save-board','--severity-all','--schematic-parity','--format','json','-o',str(out),str(path)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,check=True)

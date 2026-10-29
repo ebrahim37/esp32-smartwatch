@@ -1,6 +1,6 @@
 # Manufacturer evidence and working assumptions
 
-Retrieved 2026-10-28. Original project remains in ../../kicad; full snapshot in ../backups/source-kicad.
+Retrieved 2026-10-28; sourcing/process updates 2026-10-29. Canonical original project: `../../../kicad/watch/`; companion: `../../../kicad/companion/`. Pre-redesign snapshot: `../backups/source-kicad/`.
 
 ## JLCPCB
 
@@ -24,7 +24,12 @@ RF calculation: scripts/rf_impedance.py solves 2D quasi-static capacitance with 
 
 Assembly source: https://jlcpcb.com/capabilities/pcb-assembly-capabilities ; raw dynamic table saved in jlc-assembly-live.txt. Economic: single side only, standard stackups only, 0.8–1.6mm, single PCB minimum10x10mm, minimum0402 / IC pitch0.4mm. Standard: one or both sides, minimum70x70mm, rails and fiducials necessary. The revised **82x38.5mm all-top design needs Standard PCBA panel/fixture**, because ESP32 and EG912U are catalogued Standard Only and the unit is narrower than70mm. **User selected JLCPCB-supplied panelization; no panel PCB or panel Gerbers will be generated.** Supply unit-board files and request supplier-designed rails, tabs, fiducials and routed cavities. Clearance must accommodate6.53mm ESP antenna overhang; no rail/tab under the antenna or across SD/USB openings. Supplier DFM approval remains required. Unit dimensions stay82x38.5. No purchase/order submitted.
 
-Catalog verification: all55 distinct populated LCSC codes have live JLCPCB identity records saved in catalog.json. ESP32 C5361945 and EG912U C7498995 are explicitly **Standard Only**; EG912U requires X-ray inspection. Source https://jlcpcb.com/partdetail/C5361945 and https://jlcpcb.com/partdetail/C7498995 . Stock/order-allocation was not verified. R19 C54530922 is inconsistently tagged Wave Soldering despite being0402; require supplier correction/confirmation or manual population, not an assumed SMT match.
+Catalog identities are retained in `catalog.json`; ESP32 C5361945 and EG912U C7498995 are **Standard Only**, and EG912U requires X-ray. Sources: https://jlcpcb.com/partdetail/C5361945 and https://jlcpcb.com/partdetail/C7498995 . Stock/order-allocation is not verified. R19's inconsistently Wave-Soldering-classified C54530922 was replaced by equivalent SMT 54.9kΩ ±1% 0402 **Vishay MCS04020C5492FE000 / C2117579** after reading https://jlcpcb.com/partdetail/VishayIntertech-MCS04020C5492FE000/C2117579 . C39/C68 manufacturer **Kyocera AVX** was independently confirmed at https://www.lcsc.com/product-detail/C148107.html . See `../reports/sourcing-recheck.md`; retained obsolete catalog records are historical, not BOM substitutions.
+
+### Retained via-in-pad process
+
+Count drill/SMT-land intersections using native pad polygons, not only via centres. The authoritative final list is `../reports/manufacturing-geometry.json`. Retained holes require resin fill, planarization and copper cap; ordinary tenting or soldermask plugging is not equivalent. JLC's [2026 guide](https://jlcpcb.com/help/article/via-in-pad-pofv-guide) lists mechanical drill minimum 0.15mm and pad diameter = drill +0.15mm. The [older process notice](https://jlcpcb.com/news/free-via-in-pad-6-20-layer-pcbs-pofv) lists 0.2–0.5mm POFV drills, 0.05mm minimum /0.075mm preferred annular ring, and explicitly charges for **four-layer** POFV. Obtain current DFM confirmation for 0.15mm filled/capped drills, partial/off-centre land overlaps, surface planarity, finish and extra cost; neither general capability nor the KiCad flags constitute acceptance of these actual files. No numeric POFV quotation is available.
+
 
 ## Espressif
 

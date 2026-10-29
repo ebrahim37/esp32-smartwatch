@@ -18,13 +18,16 @@ agent/companion/backups/
 agent/companion/routing/
 agent/companion/archive/
 agent/companion/tools/
-# Keep selected concise evidence explicitly added when useful
-agent/companion/reports/*.png
-agent/companion/reports/*.svg
-agent/companion/reports/*.pdf
-agent/companion/reports/*.xml
-agent/companion/reports/*drc.json
-agent/companion/reports/*erc.json
+# Generated reports stay local except concise current evidence and review notes.
+agent/companion/reports/*
+!agent/companion/reports/*.md
+!agent/companion/reports/*.rpt
+!agent/companion/reports/final-verification.json
+!agent/companion/reports/manufacturing-geometry.json
+!agent/companion/reports/power-mesh-resume.json
+!agent/companion/reports/usb-resume-audit.json
+!agent/companion/reports/migration-integrity.json
+!agent/companion/reports/assembly.json
 # Tooling downloads and logs
 *.log
 *.jar

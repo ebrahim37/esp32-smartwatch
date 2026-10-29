@@ -1,0 +1,188 @@
+{
+  "/Power/VBAT": {
+    "grid_mm": 0.1,
+    "nodes": 7479,
+    "mesh_components": 1,
+    "source_mesh_nodes": 165,
+    "unreachable_terminals": [],
+    "source_pads": [
+      [
+        "U2",
+        "1"
+      ]
+    ],
+    "barrel_plating_assumed_mm": 0.02,
+    "scope": "DC screening only; discretisation excludes sub-grid necks, no thermal/AC qualification",
+    "solver_info": 0,
+    "sink_drops_mV": [
+      {
+        "ref": "U1",
+        "pad": "13",
+        "current_A": 2.0,
+        "drop_mV": 34.48285830501137
+      },
+      {
+        "ref": "U1",
+        "pad": "14",
+        "current_A": 2.0,
+        "drop_mV": 34.74418287947812
+      }
+    ],
+    "max_drop_mV": 34.944021078064736,
+    "joule_power_W": 0.138454082368979
+  },
+  "/Power/VSYS": {
+    "grid_mm": 0.1,
+    "nodes": 110568,
+    "mesh_components": 1,
+    "source_mesh_nodes": 64,
+    "unreachable_terminals": [],
+    "source_pads": [
+      [
+        "U1",
+        "15"
+      ],
+      [
+        "U1",
+        "16"
+      ]
+    ],
+    "barrel_plating_assumed_mm": 0.02,
+    "scope": "DC screening only; discretisation excludes sub-grid necks, no thermal/AC qualification",
+    "solver_info": 0,
+    "sink_drops_mV": [
+      {
+        "ref": "QH2",
+        "pad": "8",
+        "current_A": 3.5,
+        "drop_mV": 38.61001555037196
+      },
+      {
+        "ref": "U4",
+        "pad": "10",
+        "current_A": 0.6,
+        "drop_mV": 23.924470263596312
+      }
+    ],
+    "max_drop_mV": 38.98513516075291,
+    "joule_power_W": 0.14948973658445966
+  },
+  "/Power/USB_5V": {
+    "grid_mm": 0.1,
+    "nodes": 19050,
+    "mesh_components": 15,
+    "source_mesh_nodes": 156,
+    "unreachable_terminals": [],
+    "source_pads": [
+      [
+        "USBC1",
+        "A4B9"
+      ],
+      [
+        "USBC1",
+        "B4A9"
+      ]
+    ],
+    "barrel_plating_assumed_mm": 0.02,
+    "scope": "DC screening only; discretisation excludes sub-grid necks, no thermal/AC qualification",
+    "solver_info": 0,
+    "sink_drops_mV": [
+      {
+        "ref": "U1",
+        "pad": "1",
+        "current_A": 1.0,
+        "drop_mV": 78.84091493193039
+      },
+      {
+        "ref": "U1",
+        "pad": "24",
+        "current_A": 1.0,
+        "drop_mV": 79.64724598677978
+      }
+    ],
+    "max_drop_mV": 79.71742146219091,
+    "joule_power_W": 0.15848816091871015
+  },
+  "/Modem/MODEM_3V8": {
+    "grid_mm": 0.1,
+    "nodes": 160158,
+    "mesh_components": 1,
+    "source_mesh_nodes": 148,
+    "unreachable_terminals": [],
+    "source_pads": [
+      [
+        "U5",
+        "11"
+      ],
+      [
+        "U5",
+        "12"
+      ],
+      [
+        "U5",
+        "13"
+      ],
+      [
+        "U5",
+        "26"
+      ]
+    ],
+    "barrel_plating_assumed_mm": 0.02,
+    "scope": "DC screening only; discretisation excludes sub-grid necks, no thermal/AC qualification",
+    "solver_info": 0,
+    "sink_drops_mV": [
+      {
+        "ref": "U10",
+        "pad": "32",
+        "current_A": 0.5,
+        "drop_mV": 32.409315596186595
+      },
+      {
+        "ref": "U10",
+        "pad": "33",
+        "current_A": 0.5,
+        "drop_mV": 32.44129253998862
+      },
+      {
+        "ref": "U10",
+        "pad": "52",
+        "current_A": 1.0,
+        "drop_mV": 34.30491261626768
+      },
+      {
+        "ref": "U10",
+        "pad": "53",
+        "current_A": 1.0,
+        "drop_mV": 34.26414800355235
+      }
+    ],
+    "max_drop_mV": 34.441476696198954,
+    "joule_power_W": 0.10099436468790748
+  },
+  "/ESP32/SYS_3V3": {
+    "grid_mm": 0.1,
+    "nodes": 10699,
+    "mesh_components": 25,
+    "source_mesh_nodes": 27,
+    "unreachable_terminals": [],
+    "source_pads": [
+      [
+        "U4",
+        "6"
+      ]
+    ],
+    "barrel_plating_assumed_mm": 0.02,
+    "scope": "DC screening only; discretisation excludes sub-grid necks, no thermal/AC qualification",
+    "solver_info": 0,
+    "sink_drops_mV": [
+      {
+        "ref": "U7",
+        "pad": "2",
+        "current_A": 0.6,
+        "drop_mV": 29.106697318958734
+      }
+    ],
+    "max_drop_mV": 29.176640848670225,
+    "joule_power_W": 0.01746401839137525
+  }
+}

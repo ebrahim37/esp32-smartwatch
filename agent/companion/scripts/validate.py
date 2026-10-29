@@ -34,7 +34,7 @@ for i,a in enumerate(keys):
     for c in keys[i+1:]:
         sa,pa=courts[a];sc,pc=courts[c]
         if sa==sc and not pa.is_empty and not pc.is_empty and pa.intersection(pc).area>1e-6:overlaps.append([a,c])
-root=ET.parse(ROOT/'reports/revision-testpoints-netlist.xml').getroot();sch={(n.attrib['ref'],n.attrib['pin']):net.attrib['name'].replace('{slash}','/') for net in root.findall('./nets/net') for n in net.findall('node')};pcb={(f.GetReference(),a.GetNumber()):a.GetNetname().replace('{slash}','/') for f in b.GetFootprints() for a in f.Pads() if a.GetNumber()};mismatches=[dict(ref=k[0],pin=k[1],schematic=v,pcb=pcb.get(k)) for k,v in sch.items() if pcb.get(k)!=v]
+root=ET.parse(ROOT/'reports/final-netlist.xml').getroot();sch={(n.attrib['ref'],n.attrib['pin']):net.attrib['name'].replace('{slash}','/') for net in root.findall('./nets/net') for n in net.findall('node')};pcb={(f.GetReference(),a.GetNumber()):a.GetNetname().replace('{slash}','/') for f in b.GetFootprints() for a in f.Pads() if a.GetNumber()};mismatches=[dict(ref=k[0],pin=k[1],schematic=v,pcb=pcb.get(k)) for k,v in sch.items() if pcb.get(k)!=v]
 zones=[];ground=None
 for z in b.Zones():
     if z.GetIsRuleArea():continue

@@ -9,7 +9,8 @@ import json, pathlib, math, collections, time
 import pcbnew as p
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 cfg=json.loads((ROOT/'scripts/layout.json').read_text())
-b=p.LoadBoard(str(ROOT/'backups/source-kicad/watch.kicad_pcb'))
+# Historical 30 mm placement generator: read the preserved original, never write it.
+b=p.LoadBoard(str(ROOT.parents[1] / 'kicad/watch/watch.kicad_pcb'))
 mm=p.FromMM; to=p.ToMM; O=cfg['origin']; W,H=cfg['size']; gap=cfg['courtyard_gap']
 fs={f.GetReference():f for f in b.GetFootprints()}
 

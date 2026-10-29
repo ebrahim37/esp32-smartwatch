@@ -37,15 +37,15 @@ for z in allzones:
         anchors.extend(g for g,n,a in lands if n==net and a.GetDrillSize().x)
         if any(geo.intersects(g) for g in anchors):continue
         found=False
-        for diameter,drill,allow_pad in [(.6,.3,False),(.35,.2,False),(.3,.15,True)]:
+        for diameter,drill,allow_pad in [(.6,.3,False),(.35,.2,False),(.3,.15,True),(.25,.15,True)]:
             radius=diameter/2;dr=drill/2;area=geo.intersection(others).buffer(-radius-.025)
             if area.is_empty:continue
-            x0,y0,x1,y1=area.bounds;represent=area.representative_point();candidates=[(represent.x,represent.y)]+[(x,y) for x in list(__import__('numpy').arange(x0,x1+.01,.2)) for y in list(__import__('numpy').arange(y0,y1+.01,.2))]
+            x0,y0,x1,y1=area.bounds;represent=area.representative_point();candidates=[(represent.x,represent.y)]+[(x,y) for x in list(__import__('numpy').arange(x0,x1+.01,.05)) for y in list(__import__('numpy').arange(y0,y1+.01,.05))]
             for x,y in candidates:
                 q=Point(x,y);g=q.buffer(radius)
                 if not area.covers(q) or keepouts.intersects(g):continue
                 if not allow_pad and any(g.distance(a)<.03 for a,n,pad in lands):continue
-                if any(n!=net and g.distance(a)<.205 for a,n,pad in lands):continue
+                if any(n!=net and g.distance(a)<.13 for a,n,pad in lands):continue
                 if any(pad.GetDrillSize().x and q.distance(Point(pos(pad)))<dr+max(to(pad.GetDrillSize().x),to(pad.GetDrillSize().y))/2+.45 for a,n,pad in lands):continue
                 if any(n!=net and g.distance(c)<.205 for c,n,l in copper):continue
                 if any(q.distance(h)<dr+r+.26 for h,r in holes):continue
