@@ -1,6 +1,6 @@
-# Companion rev-a manufacturing readiness
+# Companion rev-b manufacturing readiness
 
-**ENGINEERING CANDIDATE — NOT FOR ORDERING.** No validated release has been published into `manufacturing/companion/`. The candidate is `agent/companion/archive/release-candidate/rev-a/`. Supplier process/assembly acceptance and physical qualification remain incomplete.
+**ENGINEERING CANDIDATE — NOT FOR ORDERING.** No validated release has been published into `manufacturing/companion/`. The candidate is `agent/companion/archive/release-candidate/rev-b/`; rev-a and the original JLC reports remain preserved. Supplier process/assembly acceptance and physical qualification remain incomplete.
 
 ## Authoritative projects and repository
 
@@ -34,9 +34,9 @@ BQ25606 SW load copper is now direct F.Cu, with 0.3mm paired pad escapes flaring
 | Rail DC screen | Applied sink current A | Maximum simulated drop mV | Total simulated copper loss W |
 |---|---:|---:|---:|
 | /Power/VBAT | 4 | 34.944021078064736 | 0.138454082368979 |
-| /Power/VSYS | 4.1 | 38.98513516075291 | 0.14948973658445966 |
+| /Power/VSYS | 4.1 | 39.23737771061595 | 0.15038076748657486 |
 | /Power/USB_5V | 2 | 79.71742146219091 | 0.15848816091871015 |
-| /Modem/MODEM_3V8 | 3 | 34.441476696198954 | 0.10099436468790748 |
+| /Modem/MODEM_3V8 | 3 | 34.441476703595164 | 0.10099436471009587 |
 | /ESP32/SYS_3V3 | 0.6 | 29.176640848670225 | 0.01746401839137525 |
 
 The 0.1mm finite-volume screen assumes 35µm outer /15.2µm inner copper and 20µm via-barrel plating. It excludes sub-grid necks and is NOT IPC-2152, electrothermal, capacitor-ESL, switching-stability or current-limit qualification. Battery/modem simultaneous load steps, transmit bursts, regulator overshoot, enclosure temperatures and cell charge-current suitability require hardware tests.
@@ -54,7 +54,7 @@ LTE/GNSS use 0.29mm F.Cu traces over the In1 GND plane; nominal coplanar gap0.25
 
 ## Via-in-pad disposition
 
-Native drill/SMT-land intersections: **54 vias**, including **10 centred**; **43 annuli extend partly outside the associated land copper. Total board vias: 358. Unfilled or uncapped retained in-pad holes: 0. See `via-in-pad-map.csv` and `manufacturing-geometry.json` for exact drill, diameter, location and affected lands. Historical centred-only count28 was not a complete census.
+Native drill/SMT-land intersections: **54 vias**, including **9 centred**; **43 annuli extend partly outside the associated land copper. Total board vias: 358. Unfilled or uncapped retained in-pad holes: 0. See `via-in-pad-map.csv` and `manufacturing-geometry.json` for exact drill, diameter, location and affected lands. Historical centred-only count28 was not a complete census.
 
 Unnecessary overlaps were trial-moved to off-pad dogbones with actual DRC rollback. Some remain in dense/fine-pitch escapes and high-current pads. Do NOT substitute ordinary tenting/ink plugging for resin fill + planarization + copper cap. JLC supports POFV, but four-layer POFV is chargeable; no numeric quote or DFM acceptance of these partial overlaps/0.15mm drills has been obtained. The 2026 guide and older process notice differ on preferred drill range; supplier confirmation of actual files is mandatory.
 
@@ -79,4 +79,11 @@ From the repository root, with system KiCad/pcbnew, NumPy, SciPy, Shapely and th
 /usr/bin/python3 agent/companion/scripts/release_revision.py
 ```
 
-The exporter writes only the engineering candidate. Do not copy it to `manufacturing/companion/rev-a/` until supplier DFM/POFV, stock/BOM/CPL review and engineering acceptance are completed. See `research/manufacturing.md`, `research/mechanical-revision.md`, `reports/sourcing-recheck.md`, and the candidate verification/manifest files for sources and limitations.
+The exporter writes only the engineering candidate. Do not copy it to `manufacturing/companion/rev-b/` until supplier DFM/POFV, stock/BOM/CPL review and engineering acceptance are completed. See `reports/jlcpcb-dfm/before-after.md`, `reports/jlcpcb-dfm/approval-exceptions.md`, `reports/jlcpcb-dfm/inventory.json`, `research/manufacturing.md`, `research/mechanical-revision.md`, `reports/sourcing-recheck.md`, and the candidate verification/manifest files for sources and limitations.
+
+## Rev B DFM remediation and supplier gates
+
+The supplied JLC reports are preserved and deduplicated in `jlcpcb-dfm/inventory.json`. Exact before/after measurements, source limitations and category dispositions are in `jlcpcb-dfm/before-after.md`; pair-by-pair unapproved spacing, edge/fixture and process exceptions are in `jlcpcb-dfm/approval-exceptions.md`.
+Manufacturer copper unions and separate stencil apertures correct the FET, charger and converter land patterns without changing circuit nets or component poses. `jlcpcb-dfm/pattern-verification.json` independently checks the emitted Gerber flashes/regions, all corrected lands and apertures, mask coverage and retained filled/capped vias. This does not certify terminal tolerances, reflow or supplier stencil registration. TI examples use a 0.125mm charger stencil and 0.1mm converter stencil; JLC must approve the common or stepped process.
+R19 is locally identified as Vishay MCS04020C5492FE000 / C2117579, with manufacturer and native geometry evidence. The supplied JLC result still lacks its assembly package assignment. No supplier-side correction was observed or submitted; `r19-package.json` and `r19-supplier-request.txt` define exact closeout. Do not treat a locally valid BOM/CPL as a cleared supplier package.
+The compact modem layout retains sub-3mm manufacturer-recommended soldering/maintenance gaps. They remain unapproved assembly exceptions, not false positives. The full exception table and matching Standard-PCBA fixture/rail relief must be explicitly accepted by JLC before ordering.

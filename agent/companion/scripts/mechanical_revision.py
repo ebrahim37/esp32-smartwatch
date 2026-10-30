@@ -46,8 +46,33 @@ for f in b.GetFootprints():
         pts=pts@rz.T+np.array([mod.m_Offset.x,mod.m_Offset.y,mod.m_Offset.z]);pts[:,1]*=-1
         a=math.radians(f.GetOrientationDegrees());rz=np.array([[math.cos(a),math.sin(a),0],[-math.sin(a),math.cos(a),0],[0,0,1]])
         pts=pts@rz.T+np.array([to(f.GetX())-O[0],to(f.GetY())-O[1],0]);world.extend(pts)
+    if ref in ('J_GNSS1','J_LTE1'):
+        # Hirose U.FL catalogue p3: 2.6-square housing, 3.0 ground-metal
+        # span and 3.1 reference total including the signal tab. Native
+        # ground pads are (+0.62,+/-1.5), signal pad (-0.62,0).
+        # The EasyEDA mesh's old 270-degree rotation displaced its centre
+        # into Y; do not silently validate an uncorrected rendering.
+        for mod in f.Models():
+            if (abs(mod.m_Rotation.z)>1e-6 or
+                    abs(mod.m_Offset.x+0.011952)>1e-6 or
+                    abs(mod.m_Offset.y)>1e-6):
+                raise RuntimeError(f'Uncalibrated U.FL model origin/rotation for {ref}; apply local_libraries.py correction')
+        local=np.array([[x,y,z] for x in (-1.18,1.92)
+                        for y in (-1.5,1.5) for z in (0,1.25)])
+        a=math.radians(f.GetOrientationDegrees())
+        rz=np.array([[math.cos(a),math.sin(a),0],[-math.sin(a),math.cos(a),0],[0,0,1]])
+        world=(local@rz.T+np.array([to(f.GetX())-O[0],to(f.GetY())-O[1],0])).tolist()
+    elif ref in ('QH2','QL2'):
+        # CSD16340Q3 datasheet p9: actual package3.3+/-0.1 square,
+        # height1.0 nominal/1.1max; the imported mesh is only3.0x3.02.
+        # Use the manufacturer's maximum occupied bound, not that mesh.
+        local=np.array([[x,y,z] for x in (-1.7,1.7)
+                        for y in (-1.7,1.7) for z in (0,1.1)])
+        a=math.radians(f.GetOrientationDegrees())
+        rz=np.array([[math.cos(a),math.sin(a),0],[-math.sin(a),math.cos(a),0],[0,0,1]])
+        world=(local@rz.T+np.array([to(f.GetX())-O[0],to(f.GetY())-O[1],0])).tolist()
     if world:
-        arr=np.array(world);parts.append(dict(ref=ref,side='B' if f.IsFlipped() else 'F',min=arr.min(axis=0).tolist(),max=arr.max(axis=0).tolist(),model='approximate documented bounding solid' if ref=='U10' else 'library meshed model'))
+        arr=np.array(world);parts.append(dict(ref=ref,side='B' if f.IsFlipped() else 'F',min=arr.min(axis=0).tolist(),max=arr.max(axis=0).tolist(),model='Hirose catalogue nominal occupied envelope, NOT maximum-tolerance solid; 3.1mm is reference only' if ref in ('J_GNSS1','J_LTE1') else 'TI CSD16340Q3 manufacturer maximum body envelope; imported mesh is undersized' if ref in ('QH2','QL2') else 'approximate documented bounding solid' if ref=='U10' else 'library meshed model',dimensional_tolerance_qualified=False if ref in ('J_GNSS1','J_LTE1') else True if ref in ('QH2','QL2') else None))
     elif not ref.startswith('TP'):missing.append(ref)
     for pad in f.Pads():
         r=pad.GetBoundingBox();land=[to(r.GetLeft())-O[0],to(r.GetTop())-O[1],to(r.GetRight())-O[0],to(r.GetBottom())-O[1]]

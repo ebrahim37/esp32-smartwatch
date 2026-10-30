@@ -186,7 +186,7 @@
 					)
 				)
 			)
-			(property "Footprint" "jlcpcb:LGA-12_L2.0-W2.0-P0.50-BL"
+			(property "Footprint" "libs:LGA-12_L2.0-W2.0-P0.50-BL"
 				(at 0 -13.97 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -531,7 +531,7 @@
 					)
 				)
 			)
-			(property "Footprint" "jlcpcb:VSSOP-10_L3.0-W3.0-P0.50-LS4.9-BL"
+			(property "Footprint" "libs:VSSOP-10_L3.0-W3.0-P0.50-LS4.9-BL"
 				(at 0 -12.7 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -840,7 +840,7 @@
 					)
 				)
 			)
-			(property "Footprint" "jlcpcb:VLGA-12_L2.0-W2.0-P0.50-BL"
+			(property "Footprint" "libs:VLGA-12_L2.0-W2.0-P0.50-BL"
 				(at 0 -13.97 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -1185,7 +1185,7 @@
 					)
 				)
 			)
-			(property "Footprint" "jlcpcb:CONN-SMD_2P-P1.00_SM02B-SRSS-TB-LF-SN"
+			(property "Footprint" "libs:CONN-SMD_2P-P1.00_SM02B-SRSS-TB-LF-SN"
 				(at 0 -3.81 0)
 				(show_name no)
 				(do_not_autoplace no)

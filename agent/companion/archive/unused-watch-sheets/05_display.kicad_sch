@@ -326,7 +326,7 @@
 					)
 				)
 			)
-			(property "Footprint" "jlcpcb:FPC-SMD_19P-P0.60_DIANWEI_8.03A0.019200"
+			(property "Footprint" "libs:FPC-SMD_19P-P0.60_DIANWEI_8.03A0.019200"
 				(at 0 -24.13 0)
 				(show_name no)
 				(do_not_autoplace no)

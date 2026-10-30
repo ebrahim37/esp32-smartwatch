@@ -8,15 +8,22 @@ import pcbnew as p
 ROOT=pathlib.Path(__file__).resolve().parents[1];path=ROOT.parents[1] / 'kicad/companion/companion.kicad_pcb';b=p.LoadBoard(str(path))
 # Native VRML coordinate envelopes were measured by mechanical.py. Gold feet and
 # the asymmetric USB locating pegs calibrate these transforms, not visual guesses.
-corrections={'U7':(-7.557008,0,0),'USBC1':(0,-2.24,0),'U2':(0,-1.055,0)}
+corrections={'U7':(-7.557008,0,0),'USBC1':(0,-2.24,0),'U2':(0,-1.055,0),
+             'J_GNSS1':(-0.011952,0,0),'J_LTE1':(-0.011952,0,0)}
+# U.FL housing centre in the raw WRL is X=+0.631952; its ground-pad
+# centre is X=+0.62. A 270-degree model rotation incorrectly moves that
+# asymmetric origin into Y. This correction does not change any land or CPL pose.
+model_rotations={'J_GNSS1':(0,0,0),'J_LTE1':(0,0,0)}
+for ref,offset in corrections.items():
+    f=b.FindFootprintByReference(ref)
+    models=f.Models()
+    for index in range(len(models)):
+        model=models[index]
+        model.m_Offset=p.VECTOR3D(*offset)
+        if ref in model_rotations:
+            model.m_Rotation=p.VECTOR3D(*model_rotations[ref])
+        models[index]=model
 if '--libraries-only' not in sys.argv:
-    for ref,offset in corrections.items():
-        f=b.FindFootprintByReference(ref)
-        models=f.Models()
-        for index in range(len(models)):
-            model=models[index]
-            model.m_Offset=p.VECTOR3D(*offset)
-            models[index]=model
     # Missing vendor solid: use the documented mechanical clearance envelope.
     f=b.FindFootprintByReference('U10')
     if not list(f.Models()):
@@ -31,5 +38,5 @@ for f in b.GetFootprints():
     if clone.IsFlipped():clone.Flip(clone.GetPosition(),False)
     clone.SetOrientationDegrees(0);clone.SetPosition(p.VECTOR2I(0,0))
     writer.FootprintSave(str(libpath),clone)
-(ROOT/'reports/local-libraries.json').write_text(json.dumps(dict(libraries=libs,unique_footprints=len(seen),model_corrections_mm=corrections,modem_model='official29x25x2.4mm rectangular envelope; not detailed vendor solid'),indent=2))
+(ROOT/'reports/local-libraries.json').write_text(json.dumps(dict(libraries=libs,unique_footprints=len(seen),model_corrections_mm=corrections,model_rotations_deg=model_rotations,ufl_model='housing origin calibrated to ground pads; nominal metal mesh is not a toleranced manufacturer solid',modem_model='official29x25x2.4mm rectangular envelope; not detailed vendor solid'),indent=2))
 print('Local libraries',libs,'footprints',len(seen),flush=True)

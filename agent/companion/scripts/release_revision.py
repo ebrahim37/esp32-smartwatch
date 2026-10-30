@@ -4,7 +4,7 @@ JLCPCB performs panelization: this script never creates a panel or panel Gerbers
 Any unresolved electrical defect marks the entire package NOT FOR ORDERING.
 """
 import pathlib,shutil,subprocess,json,collections,re,hashlib,zipfile
-R=pathlib.Path(__file__).resolve().parents[1];OUT=R / 'archive/release-candidate/rev-a';OUT.mkdir(parents=True,exist_ok=True)
+R=pathlib.Path(__file__).resolve().parents[1];OUT=R / 'archive/release-candidate/rev-b';OUT.mkdir(parents=True,exist_ok=True)
 log=[]
 def run(args):
     x=subprocess.run(args,cwd=R.parent,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True);log.append({'command':args,'returncode':x.returncode,'output':x.stdout})
@@ -18,7 +18,7 @@ for relative,digest in proof['inputs_sha256'].items():
         raise SystemExit('Verification is stale for '+relative+'; rerun scripts/verify.py, assembly.py and write_handoff.py')
 run(['/usr/bin/python3',str(R/'scripts/local_libraries.py'),'--libraries-only'])
 run(['/usr/bin/python3',str(R/'scripts/assembly.py')])
-shutil.copytree(R.parents[1] / 'kicad/companion',OUT/'project',dirs_exist_ok=True)
+shutil.copytree(R.parents[1] / 'kicad/companion',OUT/'project',dirs_exist_ok=True,ignore=shutil.ignore_patterns('.history','.git','*.lck','*-backups'))
 B=OUT/'project/companion.kicad_pcb';S=OUT/'project/companion.kicad_sch'
 run(['kicad-cli','pcb','drc','--refill-zones','--save-board','--schematic-parity','--severity-all','--format','json','-o',str(OUT/'drc.json'),str(B)])
 run(['kicad-cli','pcb','drc','--schematic-parity','--severity-all','--format','report','-o',str(OUT/'companion-drc.rpt'),str(B)])
@@ -32,14 +32,24 @@ run(['kicad-cli','pcb','export','svg','--layers','F.Fab,Edge.Cuts','--mode-singl
 run(['kicad-cli','pcb','export','svg','--layers','B.Fab,Edge.Cuts','--mode-single','--mirror','--fit-page-to-board','--exclude-drawing-sheet','-o',str(OUT/'assembly-bottom.svg'),str(B)])
 for side in ('top','bottom'):
     run(['kicad-cli','pcb','render','--side',side,'--width','2000','--height','1200','-o',str(OUT/('pcb-'+side+'.png')),str(B)])
+run(['/usr/bin/python3',str(R/'scripts/verify_dfm_patterns.py'),'--release-dir',str(OUT),'--output',str(R/'reports/jlcpcb-dfm/pattern-verification.json')])
+run(['/usr/bin/python3',str(R/'scripts/dfm_inventory.py')])
+run(['/usr/bin/python3',str(R/'scripts/analyze_jlc_smt.py'),'--board',str(R.parents[1]/'kicad/companion/companion.kicad_pcb'),'--output',str(R/'reports/jlcpcb-dfm/smt-bodies-after.json')])
+run(['/usr/bin/python3',str(R/'scripts/finalize_dfm_inventory.py')])
 for source,dest in [('research/manufacturing.md','stackup-and-manufacturing.md'),('research/mechanical-revision.md','antenna-and-battery.md'),('reports/mechanical-arrangement.svg','mechanical-arrangement.svg'),('reports/mechanical-revision.json','mechanical-verification.json'),('reports/acceptance-audit.json','electrical-geometry-review.json')]:
     shutil.copy2(R/source,OUT/dest)
 for source in ['final-verification.json','manufacturing-geometry.json','via-in-pad-map.csv','assembly.json','power-mesh-resume.json','usb-resume-audit.json','independent-electrical-review.md','sourcing-recheck.md','manufacturing-readiness.md']:
     shutil.copy2(R/'reports'/source,OUT/source)
+dfm_dir=R/'reports/jlcpcb-dfm'
+if not (dfm_dir/'inventory.json').exists():
+    raise SystemExit('Run scripts/dfm_inventory.py and finish DFM dispositions before export')
+shutil.copytree(dfm_dir,OUT/'jlcpcb-dfm',dirs_exist_ok=True,ignore=shutil.ignore_patterns('pattern-proof-export'))
+for name in ('dfm1.json','dfm2.json'):
+    shutil.copy2(R/name,OUT/'jlcpcb-dfm'/name)
 drc=json.loads((OUT/'drc.json').read_text());erc=json.loads((OUT/'erc.json').read_text());ev=[v for s in erc['sheets'] for v in s['violations']]
 counts={'drc_errors':sum(v['severity']=='error' for v in drc['violations']),'drc_warnings':sum(v['severity']=='warning' for v in drc['violations']),'unconnected_items':len(drc['unconnected_items']),'parity_findings':len(drc['schematic_parity']),'erc_errors':sum(v['severity']=='error' for v in ev),'erc_warnings':sum(v['severity']=='warning' for v in ev)}
 electrical_clean=not any(counts[k] for k in ('drc_errors','drc_warnings','unconnected_items','parity_findings','erc_errors'))
-status={'candidate_revision':'rev-a','electrical_gate_passed':electrical_clean,'ready_for_ordering':False,'reason':'Filled/capped via-in-pad four-layer DFM/quote, stock and BOM/CPL assembly preview, JLC panelization/overhang approval, untyped-symbol ERC review and assembled battery/RF/thermal/USB qualification still required' if electrical_clean else 'Unresolved electrical/layout defects: engineering preview only, NOT FOR ORDERING','counts':counts,'panelization':'JLCPCB supplied; unit-board files only','publication':'Candidate only; never copied automatically into manufacturing/'}
+status={'candidate_revision':'rev-b','electrical_gate_passed':electrical_clean,'ready_for_ordering':False,'reason':'JLC DFM remediation requires a new supplier run with 0.8mm JLC04081H-7628, ENIG and resin-filled/copper-capped vias; component spacing, stock, BOM/CPL model/orientation, panelization/overhang acceptance and assembled hardware qualification remain supplier/hardware gates' if electrical_clean else 'Unresolved electrical/layout defects: engineering preview only, NOT FOR ORDERING','counts':counts,'panelization':'JLCPCB supplied; unit-board files only','publication':'Candidate only; never copied automatically into manufacturing/'}
 (OUT/'release-status.json').write_text(json.dumps(status,indent=2))
 (OUT/'ORDERING-STATUS.txt').write_text(('ELECTRICAL GATE PASSED; MANUFACTURER REVIEW REQUIRED\n' if electrical_clean else 'NOT FOR ORDERING — INCOMPLETE ENGINEERING PREVIEW\n')+status['reason']+'\n'+json.dumps(counts,indent=2)+'\nNo panel files provided. JLCPCB to panelize around supported-pad ESP32 antenna overhang and connector openings.\n')
 # Independent checks of exported manufacturing bytes, not generator assertions.

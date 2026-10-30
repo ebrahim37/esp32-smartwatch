@@ -33,7 +33,7 @@
   },
   "/Power/VSYS": {
     "grid_mm": 0.1,
-    "nodes": 110568,
+    "nodes": 111286,
     "mesh_components": 1,
     "source_mesh_nodes": 64,
     "unreachable_terminals": [],
@@ -55,17 +55,17 @@
         "ref": "QH2",
         "pad": "8",
         "current_A": 3.5,
-        "drop_mV": 38.61001555037196
+        "drop_mV": 38.864595824295506
       },
       {
         "ref": "U4",
         "pad": "10",
         "current_A": 0.6,
-        "drop_mV": 23.924470263596312
+        "drop_mV": 23.924470169234002
       }
     ],
-    "max_drop_mV": 38.98513516075291,
-    "joule_power_W": 0.14948973658445966
+    "max_drop_mV": 39.23737771061595,
+    "joule_power_W": 0.15038076748657486
   },
   "/Power/USB_5V": {
     "grid_mm": 0.1,
@@ -105,7 +105,7 @@
   },
   "/Modem/MODEM_3V8": {
     "grid_mm": 0.1,
-    "nodes": 160158,
+    "nodes": 160155,
     "mesh_components": 1,
     "source_mesh_nodes": 148,
     "unreachable_terminals": [],
@@ -135,29 +135,29 @@
         "ref": "U10",
         "pad": "32",
         "current_A": 0.5,
-        "drop_mV": 32.409315596186595
+        "drop_mV": 32.40931560358278
       },
       {
         "ref": "U10",
         "pad": "33",
         "current_A": 0.5,
-        "drop_mV": 32.44129253998862
+        "drop_mV": 32.44129254738484
       },
       {
         "ref": "U10",
         "pad": "52",
         "current_A": 1.0,
-        "drop_mV": 34.30491261626768
+        "drop_mV": 34.30491262366373
       },
       {
         "ref": "U10",
         "pad": "53",
         "current_A": 1.0,
-        "drop_mV": 34.26414800355235
+        "drop_mV": 34.26414801094839
       }
     ],
-    "max_drop_mV": 34.441476696198954,
-    "joule_power_W": 0.10099436468790748
+    "max_drop_mV": 34.441476703595164,
+    "joule_power_W": 0.10099436471009587
   },
   "/ESP32/SYS_3V3": {
     "grid_mm": 0.1,

@@ -5,7 +5,7 @@ reserved. Test points and original DNP RF shunts are NOT purchasable components.
 """
 import csv,json,pathlib,xml.etree.ElementTree as ET,collections,subprocess
 import pcbnew as p
-ROOT=pathlib.Path(__file__).resolve().parents[1];OUT=ROOT / 'archive/release-candidate/rev-a';OUT.mkdir(parents=True,exist_ok=True)
+ROOT=pathlib.Path(__file__).resolve().parents[1];OUT=ROOT / 'archive/release-candidate/rev-b';OUT.mkdir(parents=True,exist_ok=True)
 project=ROOT.parents[1]/'kicad/companion';netlist=ROOT/'reports/assembly-netlist.xml'
 subprocess.run(['kicad-cli','sch','export','netlist','--format','kicadxml','-o',str(netlist),str(project/'companion.kicad_sch')],check=True)
 b=p.LoadBoard(str(project/'companion.kicad_pcb'));catalog=json.loads((ROOT/'research/catalog.json').read_text());net=ET.parse(netlist).getroot();fs={f.GetReference():f for f in b.GetFootprints()};cfg=json.loads((ROOT/'scripts/layout-revision.json').read_text());origin=cfg['origin']

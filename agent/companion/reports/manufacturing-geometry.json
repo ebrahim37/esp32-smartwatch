@@ -1,5 +1,5 @@
 {
-  "source_sha256": "fbb63cfd8b44c5fcee6e3ffb4ac39eb5691c300ae6abe6af073195a0d0c7b87e",
+  "source_sha256": "4a1a7b0a0e9b0043f9297389dc4e030a62bfbfc64bc25e9dfed3ca903368a291",
   "outline_valid": true,
   "dimensions_mm": [
     82.0,
@@ -14,7 +14,7 @@
   "courtyard_overlaps": [],
   "total_vias": 358,
   "via_in_pad_count": 54,
-  "centered_via_in_pad_count": 10,
+  "centered_via_in_pad_count": 9,
   "annulus_overhang_count": 43,
   "unfilled_or_uncapped_via_in_pad": [],
   "via_in_pad": [
@@ -116,7 +116,7 @@
       "pads": [
         "U5.9"
       ],
-      "annulus_outside_land_area_mm2": 0.16866981254724037,
+      "annulus_outside_land_area_mm2": 0.15983692748994155,
       "filled": true,
       "capped": true
     },
@@ -541,7 +541,7 @@
       "pads": [
         "U5.26"
       ],
-      "annulus_outside_land_area_mm2": 0.10688541558146275,
+      "annulus_outside_land_area_mm2": 0.1039468569330606,
       "filled": true,
       "capped": true
     },
@@ -877,7 +877,7 @@
       ],
       "diameter_mm": 0.3,
       "drill_mm": 0.15,
-      "centered": true,
+      "centered": false,
       "pads": [
         "U1.21"
       ],
@@ -942,7 +942,7 @@
       "net": "/Modem/MODEM_3V8",
       "layer": "F.Cu",
       "priority": 34,
-      "filled_area_mm2": 4.004101172147999,
+      "filled_area_mm2": 4.001798092832992,
       "islands": 1
     },
     {
@@ -956,7 +956,7 @@
       "net": "/Power/VBAT",
       "layer": "F.Cu",
       "priority": 20,
-      "filled_area_mm2": 1.6301871787040014,
+      "filled_area_mm2": 1.629440496278001,
       "islands": 1
     },
     {
@@ -991,7 +991,7 @@
       "net": "/Power/LTE_SW1",
       "layer": "F.Cu",
       "priority": 3,
-      "filled_area_mm2": 11.040695608431,
+      "filled_area_mm2": 11.193548659028504,
       "islands": 2
     },
     {
@@ -1012,7 +1012,7 @@
       "net": "GND",
       "layer": "F.Cu",
       "priority": 0,
-      "filled_area_mm2": 1776.2624091562961,
+      "filled_area_mm2": 1775.9779271731531,
       "islands": 26
     },
     {
@@ -1040,7 +1040,7 @@
       "net": "/Power/LTE_SW1",
       "layer": "B.Cu",
       "priority": 30,
-      "filled_area_mm2": 78.32911126941258,
+      "filled_area_mm2": 78.34113701872002,
       "islands": 1
     },
     {
@@ -1054,8 +1054,8 @@
       "net": "GND",
       "layer": "B.Cu",
       "priority": 0,
-      "filled_area_mm2": 2068.805832619378,
-      "islands": 17
+      "filled_area_mm2": 2050.605704555571,
+      "islands": 18
     },
     {
       "net": "/Power/USB_5V",
@@ -1068,14 +1068,14 @@
       "net": "/Power/VSYS",
       "layer": "B.Cu",
       "priority": 21,
-      "filled_area_mm2": 29.12249601708,
-      "islands": 7
+      "filled_area_mm2": 36.65381245286149,
+      "islands": 8
     },
     {
       "net": "GND",
       "layer": "In1.Cu",
       "priority": 0,
-      "filled_area_mm2": 2928.1888260184855,
+      "filled_area_mm2": 2928.1869494610614,
       "islands": 1
     },
     {
@@ -1089,7 +1089,7 @@
       "net": "/Modem/MODEM_3V8",
       "layer": "In2.Cu",
       "priority": 0,
-      "filled_area_mm2": 1419.0479844292772,
+      "filled_area_mm2": 1419.0479559427683,
       "islands": 2
     }
   ],
