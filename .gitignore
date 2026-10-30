@@ -9,25 +9,4 @@
 *-backups/
 fp-info-cache
 *.bak
-# Python/native build caches
-__pycache__/
-*.py[cod]
-# Large reproducible agent output remains on disk, not in Git
-agent/companion/checkpoints/
-agent/companion/backups/
-agent/companion/routing/
-agent/companion/archive/
-agent/companion/tools/
-# Generated reports stay local except concise current evidence and review notes.
-agent/companion/reports/*
-!agent/companion/reports/*.md
-!agent/companion/reports/*.rpt
-!agent/companion/reports/final-verification.json
-!agent/companion/reports/manufacturing-geometry.json
-!agent/companion/reports/power-mesh-resume.json
-!agent/companion/reports/usb-resume-audit.json
-!agent/companion/reports/migration-integrity.json
-!agent/companion/reports/assembly.json
-# Tooling downloads and logs
-*.log
-*.jar
+kicad/*/.history
