@@ -4,4 +4,6 @@ build/
 # Fetched by the ESP-IDF component manager (always next to the project)
 firmware/*/managed_components/
 
+.claude/
+
 web/node_modules/
