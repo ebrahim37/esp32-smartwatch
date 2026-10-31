@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark light" />
+  <title>SW Device Setup</title>
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+  <main id="app">
+    <header>
+      <h1>SW Device Setup</h1>
+      <p class="muted">Configure your watch or companion over Bluetooth. Nothing you enter leaves this page except to the paired device.</p>
+    </header>
+    <section id="connect-card" class="card">
+      <button id="connect" class="primary">Connect device</button>
+      <p id="support" class="muted small"></p>
+    </section>
+    <section id="device" class="card hidden"></section>
+    <section id="wifi" class="card hidden"></section>
+    <section id="watch" class="card hidden"></section>
+    <section id="config" class="card hidden"></section>
+    <section id="diag" class="card hidden"></section>
+    <footer class="muted small">Pairing uses a 6-digit passkey: shown on the watch screen, or printed on the companion's serial console. New companion pairings are only accepted for 5 minutes after boot or after pressing its BOOT button.</footer>
+  </main>
+  <script type="module" src="./src/main.ts"></script>
+</body>
+</html>

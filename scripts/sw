@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+# Project tool: build, test, package and flash. All output goes to build/ (git-ignored):
+#   build/watch, build/companion   ESP-IDF build dirs (sdkconfig lives there too)
+#   build/server                   cargo target dir
+#   build/web                      static web config app (Cloudflare Pages output)
+#   build/host                     C++ host tests
+#   build/dist/{watch,companion}   flashable images, offsets, merged image, manifest
+#   build/cache                    ESP-IDF component and font downloads
+#
+# Usage: scripts/sw <command> [args]
+#   build [watch|companion|server|web|all]   default: all
+#   test                                     C++ (ASan/UBSan), TypeScript, Rust + clippy
+#   package                                  firmware images -> build/dist/
+#   flash watch|companion [PORT] [--monitor] writes build/dist/<target> over USB
+#   monitor watch|companion [PORT]           serial console
+#   fonts                                    regenerate the watch's LVGL fonts
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+B="$ROOT/build"
+
+# Re-enter the Nix dev shell (ESP-IDF, Rust, Node) when the toolchain is not loaded.
+if { [ -z "${IDF_PATH:-}" ] || ! command -v cargo >/dev/null 2>&1; } && [ -z "${SW_IN_NIX:-}" ]; then
+    export SW_IN_NIX=1
+    exec nix develop "$ROOT" --command "$0" "$@"
+fi
+export IDF_COMPONENT_CACHE_PATH="$B/cache/idf-components"
+export CARGO_TARGET_DIR="$B/server"
+
+chip_of() { case "$1" in watch) echo esp32s3 ;; companion) echo esp32 ;; *) echo "unknown target: $1" >&2; exit 2 ;; esac; }
+default_port() { case "$1" in watch) echo /dev/ttyACM0 ;; companion) echo /dev/ttyUSB0 ;; esac; }
+idf() {  # idf <target> <idf.py args...>
+    local t="$1"
+    shift
+    (cd "$ROOT/firmware/$t" && idf.py -B "$B/$t" -DSDKCONFIG="$B/$t/sdkconfig" "$@")
+}
+
+build_fw() {
+    local t="$1"
+    [ -f "$B/$t/sdkconfig" ] || idf "$t" set-target "$(chip_of "$t")"
+    idf "$t" build
+    idf "$t" size | tail -n 12
+}
+
+build_server() {
+    (cd "$ROOT/server" && cargo build --release --locked)
+    ls -lh "$B/server/release/sw-helper"
+}
+
+web_deps() { (cd "$ROOT/web" && { [ -d node_modules ] || npm ci --no-audit --no-fund; }); }
+build_web() {
+    web_deps
+    (cd "$ROOT/web" && npm run build)
+}
+
+run_tests() {
+    echo "== C++ host tests =="
+    cmake -S "$ROOT/tests/host" -B "$B/host" -G Ninja -DCMAKE_BUILD_TYPE=Debug >/dev/null
+    cmake --build "$B/host"
+    (cd "$B/host" && ctest --output-on-failure)
+    "$B/host/swp_fixtures" > "$B/host/fixtures.json"
+    if ! diff -q "$B/host/fixtures.json" "$ROOT/web/src/protocol/fixtures.json" >/dev/null; then
+        echo "web/src/protocol/fixtures.json is stale; regenerating"
+        cp "$B/host/fixtures.json" "$ROOT/web/src/protocol/fixtures.json"
+    fi
+    echo "== Web tests =="
+    web_deps
+    (cd "$ROOT/web" && npx vitest run && npx tsc --noEmit)
+    echo "== Server tests =="
+    (cd "$ROOT/server" && cargo test --locked && cargo clippy --locked --all-targets -- -D warnings)
+    echo "All host tests passed."
+}
+
+# Copies flashable images + offsets into build/dist/<target>/ and creates a merged image that
+# can be written at 0x0 to a blank device.
+package_fw() {
+    local name="$1" chip
+    chip="$(chip_of "$name")"
+    local b="$B/$name" out="$B/dist/$name"
+    [ -f "$b/flasher_args.json" ] || { echo "skip $name: not built"; return; }
+    mkdir -p "$out"
+    rm -f "$out"/*.bin
+    python3 - "$b" "$out" "$chip" <<'PY'
+import json, shutil, sys, os, hashlib
+b, out, chip = sys.argv[1:4]
+fa = json.load(open(os.path.join(b, "flasher_args.json")))
+files = []
+for off, rel in sorted(fa["flash_files"].items(), key=lambda kv: int(kv[0], 16)):
+    dst = os.path.basename(rel)
+    shutil.copy(os.path.join(b, rel), os.path.join(out, dst))
+    files.append({"offset": off, "file": dst, "size": os.path.getsize(os.path.join(out, dst)),
+                  "sha256": hashlib.sha256(open(os.path.join(out, dst), "rb").read()).hexdigest()})
+s = fa["flash_settings"]
+manifest = {"chip": chip, "flash_mode": s["flash_mode"], "flash_freq": s["flash_freq"], "flash_size": s["flash_size"],
+            "baud": 460800, "files": files}
+json.dump(manifest, open(os.path.join(out, "flash-manifest.json"), "w"), indent=2)
+args = " ".join(f'{f["offset"]} {f["file"]}' for f in files)
+with open(os.path.join(out, "flash-args.txt"), "w") as fh:
+    fh.write(f'--chip {chip} write_flash --flash_mode {s["flash_mode"]} --flash_freq {s["flash_freq"]} --flash_size {s["flash_size"]} {args}\n')
+PY
+    local m="$out/flash-manifest.json"
+    # shellcheck disable=SC2046
+    (cd "$out" && esptool.py --chip "$chip" merge_bin -o "$name-merged.bin" --flash_mode "$(jq -r .flash_mode "$m")" \
+        --flash_freq "$(jq -r .flash_freq "$m")" --flash_size "$(jq -r .flash_size "$m")" \
+        $(jq -r '.files[] | "\(.offset) \(.file)"' flash-manifest.json) >/dev/null)
+    echo "packaged $name -> $out"
+}
+
+flash() {
+    local t="${1:?flash watch|companion [PORT] [--monitor]}"
+    local port="${2:-$(default_port "$t")}"
+    [ -f "$B/dist/$t/flash-args.txt" ] || { echo "build/dist/$t missing: run scripts/sw package"; exit 1; }
+    # Writes the app, bootloader and partition table; the companion's `cfg` partition
+    # (Wi-Fi/server settings) and both devices' Bluetooth pairings are not touched.
+    # shellcheck disable=SC2046
+    (cd "$B/dist/$t" && esptool.py --port "$port" --baud 460800 $(cat flash-args.txt))
+    if [ "${3:-}" = "--monitor" ]; then idf "$t" -p "$port" monitor; fi
+}
+
+# Regenerates firmware/watch/main/fonts/*.c from Inter (SIL OFL 1.1). The outputs are
+# committed; only needed to change sizes or glyph sets. Needs network access.
+fonts() {
+    local OUT="$ROOT/firmware/watch/main/fonts" WORK="$B/cache/fonts"
+    local INTER_URL="https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip"
+    local INTER_SHA256="9883fdd4a49d4fb66bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e"
+    local LV_FONT_CONV="lv_font_conv@1.5.3"
+    # FontAwesome glyphs used by LV_SYMBOL_* (LVGL's built-in set) plus U+F002 (search).
+    local FA_WOFF="$ROOT/firmware/watch/managed_components/lvgl__lvgl/scripts/built_in_font/FontAwesome5-Solid+Brands+Regular.woff"
+    local FA_SYMS="61441,61442,61448,61451,61452,61453,61457,61459,61461,61465,61468,61473,61478,61479,61480,61502,61507,61512,61515,61516,61517,61521,61522,61523,61524,61543,61544,61550,61552,61553,61556,61559,61560,61561,61563,61587,61589,61636,61637,61639,61641,61664,61671,61674,61683,61724,61732,61787,61931,62016,62017,62018,62019,62020,62087,62099,62212,62189,62810,63426,63650"
+    # ASCII, copyright, degree, multiply, divide, middle dot, bullet, en/em dash, minus, ellipsis, arrows.
+    local TEXT_RANGE="0x20-0x7E,0xA9,0xB0,0xD7,0xF7,0xB7,0x2022,0x2013,0x2014,0x2212,0x2026,0x2190-0x2193"
+    mkdir -p "$WORK" "$OUT"
+    [ -f "$WORK/Inter.zip" ] || curl -sSLo "$WORK/Inter.zip" "$INTER_URL"
+    echo "$INTER_SHA256  $WORK/Inter.zip" | sha256sum -c -
+    unzip -oq "$WORK/Inter.zip" "extras/ttf/Inter-Medium.ttf" "extras/ttf/Inter-SemiBold.ttf" "extras/ttf/InterDisplay-SemiBold.ttf" "LICENSE.txt" -d "$WORK"
+    [ -f "$FA_WOFF" ] || { echo "run scripts/sw build watch once first (fetches LVGL)"; exit 1; }
+    cp "$WORK/LICENSE.txt" "$ROOT/firmware/watch/assets/fonts/Inter-LICENSE.txt"
+    gen_text() {  # name size ttf
+        npx -y "$LV_FONT_CONV" --no-compress --no-prefilter --bpp 4 --size "$2" --format lvgl --lv-include lvgl.h \
+            --font "$WORK/extras/ttf/$3" -r "$TEXT_RANGE" --font "$FA_WOFF" -r "$FA_SYMS" -o "$OUT/$1.c" --lv-font-name "$1"
+    }
+    gen_digits() {  # name size ttf
+        npx -y "$LV_FONT_CONV" --no-compress --no-prefilter --bpp 4 --size "$2" --format lvgl --lv-include lvgl.h \
+            --font "$WORK/extras/ttf/$3" --symbols "0123456789:.-" -r 0x2212,0xB0 -o "$OUT/$1.c" --lv-font-name "$1"
+    }
+    gen_text font_inter_16 16 Inter-Medium.ttf
+    gen_text font_inter_20 20 Inter-Medium.ttf
+    gen_text font_inter_24 24 Inter-SemiBold.ttf
+    gen_text font_inter_32 32 Inter-SemiBold.ttf
+    gen_digits font_digits_64 64 InterDisplay-SemiBold.ttf
+    gen_digits font_digits_132 132 InterDisplay-SemiBold.ttf
+    echo "fonts written to $OUT"
+}
+
+cmd="${1:-help}"
+shift || true
+case "$cmd" in
+    build)
+        case "${1:-all}" in
+            watch | companion) build_fw "$1" ;;
+            server) build_server ;;
+            web) build_web ;;
+            all) build_fw watch && build_fw companion && build_server && build_web ;;
+            *) echo "build [watch|companion|server|web|all]" >&2; exit 2 ;;
+        esac
+        ;;
+    test) run_tests ;;
+    package) package_fw watch && package_fw companion ;;
+    flash) flash "$@" ;;
+    monitor)
+        t="${1:?monitor watch|companion [PORT]}"
+        idf "$t" -p "${2:-$(default_port "$t")}" monitor
+        ;;
+    fonts) fonts ;;
+    *) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; [ "$cmd" = help ] ;;
+esac

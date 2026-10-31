@@ -1,0 +1,12 @@
+## Pinned so builds are reproducible; dependencies.lock records the resolved set.
+## lvgl is listed first so the solver fixes 9.5.0 before resolving the BSP's ">=8,<10" range
+## (component manager 2.2 otherwise evaluates 9.6.0's Kconfig-conditional deps and aborts).
+dependencies:
+  idf: ">=5.5.0,<5.6.0"
+  lvgl/lvgl:
+    version: "9.5.0"
+    public: true
+  # Waveshare board support: CO5300 AMOLED (via the SH8601-compatible panel driver),
+  # FT3168 touch (FT5x06-compatible), I2C bus and esp_lvgl_port glue.
+  waveshare/esp32_s3_touch_amoled_2_06: "2.0.0"
+  waveshare/qmi8658: "2.0.2"

@@ -1,0 +1,10 @@
+# Name,   Type, SubType, Offset,   Size,     Flags
+# 4 MB flash. No OTA slots: two copies of the ~2.5 MB dual-mode Bluetooth + Wi-Fi + TLS
+# image do not fit. TODO(HARDWARE): the EG912U companion PCB should carry >= 8 MB flash
+# so OTA can be enabled.
+nvs,      data, nvs,     0x9000,   0x6000,
+phy_init, data, phy,     0xf000,   0x1000,
+# Application configuration (Wi-Fi, server, Navidrome credentials). Separate from `nvs`
+# so it can be provisioned from a generated image without wiping Bluetooth bonds.
+cfg,      data, nvs,     0x10000,  0x10000,
+factory,  app,  factory, 0x20000,  0x3E0000,

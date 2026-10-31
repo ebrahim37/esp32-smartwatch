@@ -1,0 +1,63 @@
+# Hardware test checklist
+
+Nothing below has been run on real hardware yet; the firmware was only compiled. Work
+through it in order and note the results in `agent/firmware/progress.md`.
+
+## 0. Prepare
+- [ ] `scripts/sw test` passes on the host.
+- [ ] Server deployed (`docs/server.md`): `curl …/v1/status` shows `weather`, `tiles`, `search`, `routing` true.
+- [ ] Helper/ntfy/Navidrome details at hand (entered on the watch under Settings → Server); 8 GB microSD available (back up anything on it: a non-FAT card **will be formatted**).
+
+## 1. Companion bring-up (serial monitor at 115200)
+- [ ] Flash, `--monitor`: boot log shows `SW Companion 0.1.0`, `BLE pairing passkey: 616616`.
+- [ ] **No card:** log says `no card or card not responding`, no format attempt, retries every 30 s.
+- [ ] **FAT32 card with files:** `probe: … kind=FAT32 -> existing FAT32 volume`; files untouched (check on a PC afterwards).
+- [ ] **exFAT card (factory 64 GB style) or ext4:** log warns `FORMATTING ERASES ALL EXISTING FILES`, then mounts FAT32; `/music /maps /memos` exist.
+- [ ] **Blank card** (`dd if=/dev/zero of=… bs=1M count=64`): formatted without the data-loss warning.
+- [ ] Pull the card during operation and reboot: no format occurs.
+- [ ] Provision cfg; Wi-Fi connects (`online via Wi-Fi`), SNTP `time synchronised`.
+- [ ] Turn the AP off: log shows backoff (`next attempt in …`) growing to ~5 min, reconnects when AP returns.
+- [ ] `heap:` log lines: internal free stays > 30 KB with Wi-Fi + BLE + A2DP connected.
+
+## 2. Watch bring-up
+- [ ] Flash, `--monitor`: display shows the home face within ~2 s; touch works; `QMI8658 at 0x6b`, `AXP2101 found`.
+- [ ] Home: `BAT: USB` (no battery), `HDG` changes when rotating the watch flat, time `--:--` until synced.
+- [ ] Wait 15 s: brightness dims; touch restores. After a minute the face shifts by a few pixels.
+- [ ] Launcher grid opens all apps; Back and Home buttons work everywhere.
+- [ ] Keyboard: shift (one-shot), 123/#+=, backspace, cursor blink, cancel ✕, submit ✓.
+- [ ] Settings → Vibration toggle buzzes the motor (GPIO18).
+
+## 3. Pairing and reconnection
+- [ ] Within 5 min of companion boot: Watch Settings → Connections → Companion → Find & pair → select → keyboard asks for passkey → enter `616616` → Status `Connected`.
+- [ ] Wrong passkey fails; no bond stored.
+- [ ] After pairing window expired, a new phone cannot pair (`pairing rejected: window closed`); press BOOT → pairing possible for 2 min.
+- [ ] Reboot watch: reconnects automatically without passkey.
+- [ ] Reboot companion: watch shows `Waiting to reconnect`, reconnects within ~1 min.
+- [ ] Walk out of range for 5 min, come back: reconnects (backoff ≤ 5 min).
+- [ ] Disconnect → stays disconnected; Reconnect → connects; Forget → `Not paired`.
+- [ ] Time appears on the watch after the companion has NTP; date rollover at midnight resets steps.
+
+## 4. Data features
+- [ ] Weather app and home widget populate (description, low/current/high colours, wind, UV, precip text).
+- [ ] Notifications: `curl -H "Authorization: Bearer <ntfy publish token>" -d test https://<ntfy>/<topic>` → watch banner + vibration within a few seconds; appears once even after a companion reboot (dedup); Dismiss/Clear work; ntfy toggle off → no banner.
+- [ ] Publish to an ntfy topic → arrives on the watch.
+- [ ] Maps: tiles load around the dummy location, `+`/`−`, drag to pan, recenter; `HDG … REL` cone rotates with the wrist; Search shows nearby places; pick → Walk → route line + banner; End clears.
+- [ ] Turn the companion's Wi-Fi off: previously viewed tiles still load (SD cache).
+
+## 5. Music / AirPods (unverified on AirPods — TODO(HARDWARE))
+- [ ] Companion log lists `available playlist: id=…` if `nd_playlist` is unset; set it via web app.
+- [ ] Sync downloads originals into `/sdcard/music`; interrupt Wi-Fi mid-file → resumes (`Range`) later; removing a song from the playlist deletes it on the next sync.
+- [ ] Watch Connections → AirPods → Search (AirPods in pairing mode, case button held) → select → `Connected`.
+- [ ] Reboot companion: AirPods reconnect automatically.
+- [ ] Play an MP3, a FLAC (16- and 24-bit) and an M4A (AAC and ALAC) track: audio is clean, no dropouts for 10 min with BLE connected and Wi-Fi up.
+- [ ] Mini player, full player (`m:ss / -m:ss`), shuffle, repeat off/all/one, next/prev, drag-down dismiss.
+- [ ] AirPods double-tap/press: play/pause/next reach the companion (AVRCP).
+- [ ] Seek (MP3 jumps; FLAC/M4A seeks by fast-decoding: expect a short delay).
+- [ ] Open Maps while music plays: tiles still load (slower), audio does not stutter.
+- [ ] Timer completion with AirPods connected plays beeps and vibrates.
+
+## 6. Web configuration
+- [ ] `scripts/sw build web`, deploy or `npx vite preview --host` behind HTTPS.
+- [ ] iPhone + Bluefy: Connect → companion → passkey prompt → status, Wi-Fi, services keys visible; secrets shown only as set/not set.
+- [ ] Watch Settings → Web configuration → connect from Bluefy → passkey/compare code shown on the watch → watch settings editable.
+- [ ] Desktop Chrome: same flows.

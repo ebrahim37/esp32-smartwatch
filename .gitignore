@@ -1,12 +1,7 @@
-# KiCad local/editor state
-*.kicad_prl
-*.kicad_pcb-bak
-*.kicad_sch-bak
-*.kicad_pro-bak
-*.lck
-~*.lck
-~$*
-*-backups/
-fp-info-cache
-*.bak
-kicad/*/.history
+# Build output, packaged firmware and caches (scripts/sw)
+build/
+
+# Fetched by the ESP-IDF component manager (always next to the project)
+firmware/*/managed_components/
+
+web/node_modules/
