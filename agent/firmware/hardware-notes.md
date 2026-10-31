@@ -17,5 +17,3 @@
 ## Toolchain
 - nixpkgs-esp-dev pinned 5287d6e1; overridden to ESP-IDF v5.5.5 (hash in flake). xtensa-esp-elf-gdb dropped (auto-patchelf fails on python3.14 variant).
 - idf-component-manager 2.2.2 (bundled) aborts with `MissingKconfigError: LV_USE_FREETYPE` while solving lvgl 9.6 deps; 2.4.9 added to PYTHONPATH in the flake fixes it.
-- Rollup's native binary SIGILLs in this environment; web uses `@rollup/wasm-node` via npm overrides.
-- Bluefy: vendor claims scan/pair/connect/read/write/notify; anecdotal disconnect-after-pairing reports; MTU unknown → 20-byte writes.

@@ -8,7 +8,6 @@
 #include "app/state.hpp"
 #include "app/tiles.hpp"
 #include "ble/central.hpp"
-#include "ble/peripheral.hpp"
 #include "esp_app_desc.h"
 #include "esp_log.h"
 #include "esp_mac.h"
@@ -26,43 +25,31 @@ constexpr int kTxQueueLen = 48;
 constexpr int64_t kHeartbeatUs = 20LL * 1000000;
 constexpr int64_t kPeerSilentUs = 75LL * 1000000;  // > 3 missed heartbeats: drop and reconnect
 
-struct TxItem {
-    Target target;
-    std::vector<uint8_t>* frame;
-};
 
 QueueHandle_t txq = nullptr;
 std::atomic<uint16_t> seq{1};
 std::atomic<bool> is_ready{false};
-std::atomic<bool> web_up{false};
 std::atomic<int64_t> last_rx_us{0};
-std::atomic<bool> web_forward{false};  // web app asked for companion data through us
 
 // Decoders and the transfer receiver are only touched from the NimBLE host task.
 swp::FrameDecoder dec_companion;
-swp::FrameDecoder dec_web;
 swp::TransferReceiver tile_rx(256 * 1024, 8);
 tiles::Key tile_rx_key{};
 
-uint32_t own_caps() { return swp::kCapTime | swp::kCapWatchSettings | swp::kCapConfig; }
+uint32_t own_caps() { return swp::kCapTime | swp::kCapConfig; }
 
 std::string fw_version() { return esp_app_get_description()->version; }
 
 void tx_task(void*) {
-    TxItem it;
+    std::vector<uint8_t>* item;
     for (;;) {
-        if (xQueueReceive(txq, &it, portMAX_DELAY) != pdTRUE) continue;
-        std::vector<uint8_t>& f = *it.frame;
+        if (xQueueReceive(txq, &item, portMAX_DELAY) != pdTRUE) continue;
+        std::vector<uint8_t>& f = *item;
         bool ok = true;
-        if (it.target == Target::Companion) {
-            size_t chunk = central::mtu() > 3 ? central::mtu() - 3 : 20;
-            for (size_t off = 0; ok && off < f.size(); off += chunk) ok = central::write(f.data() + off, std::min(chunk, f.size() - off));
-        } else {
-            size_t chunk = peripheral::mtu() > 3 ? peripheral::mtu() - 3 : 20;
-            for (size_t off = 0; ok && off < f.size(); off += chunk) ok = peripheral::notify(f.data() + off, std::min(chunk, f.size() - off));
-        }
+        size_t chunk = central::mtu() > 3 ? central::mtu() - 3 : 20;
+        for (size_t off = 0; ok && off < f.size(); off += chunk) ok = central::write(f.data() + off, std::min(chunk, f.size() - off));
         if (!ok) ESP_LOGD(TAG, "tx dropped (%u bytes)", (unsigned)f.size());
-        delete it.frame;
+        delete item;
     }
 }
 
@@ -135,10 +122,6 @@ void handle_notification(const swp::Notification& n) {
     send(ack);
 }
 
-void mirror_to_web(const swp::Frame& f) {
-    if (web_up.load() && web_forward.load()) enqueue(Target::Web, f.type, std::vector<uint8_t>(f.payload));
-}
-
 void handle_companion(const swp::Frame& f) {
     using swp::MsgType;
     last_rx_us.store(esp_timer_get_time());
@@ -198,6 +181,15 @@ void handle_companion(const swp::Frame& f) {
                 s->map_sync = std::move(*m);
                 s->map_sync_valid = true;
                 app::mark(app::kDirtyMapData);
+            }
+            break;
+        case MsgType::WebConfigStatus:
+            if (auto m = swp::decode_message<swp::WebConfigStatus>(f)) {
+                app::Locked s;
+                s->web_config_open = m->open;
+                s->web_config_url = m->url;
+                s->web_config_until_us = esp_timer_get_time() + static_cast<int64_t>(m->remaining_s) * 1000000;
+                app::mark(app::kDirtyWebConfig);
             }
             break;
         case MsgType::MapDataStatus:
@@ -273,7 +265,6 @@ void handle_companion(const swp::Frame& f) {
                 s->wifi_valid = true;
                 app::mark(app::kDirtyWifi);
             }
-            mirror_to_web(f);
             break;
         case MsgType::AudioDevices:
             if (auto m = swp::decode_message<swp::AudioDevices>(f)) {
@@ -296,7 +287,6 @@ void handle_companion(const swp::Frame& f) {
                 s->companion_valid = true;
                 app::mark(app::kDirtyCompanion);
             }
-            mirror_to_web(f);
             break;
         case MsgType::ConfigValue:
             if (auto m = swp::decode_message<swp::ConfigValue>(f)) {
@@ -310,7 +300,6 @@ void handle_companion(const swp::Frame& f) {
                 if (!replaced && s->config_values.size() < 32) s->config_values.push_back(*m);
                 app::mark(app::kDirtyConfig);
             }
-            mirror_to_web(f);
             break;
         case MsgType::Error:
             if (auto m = swp::decode_message<swp::Error>(f)) {
@@ -326,75 +315,10 @@ void handle_companion(const swp::Frame& f) {
                 s->last_error_text = m->message;
                 app::mark(app::kDirtySearch | app::kDirtyRoute | app::kDirtyCompanion);
             }
-            mirror_to_web(f);
             break;
         default:
             ESP_LOGD(TAG, "ignored message 0x%02x", f.type);
             break;
-    }
-}
-
-void send_device_info_web() {
-    swp::DeviceInfo d;
-    d.role = static_cast<uint8_t>(swp::Role::Watch);
-    d.name = "SW Watch";
-    d.firmware = fw_version();
-    d.hardware = "Waveshare ESP32-S3-Touch-AMOLED-2.06";
-    esp_read_mac(d.mac, ESP_MAC_BT);
-    send_web(d);
-}
-
-void handle_web(const swp::Frame& f) {
-    using swp::MsgType;
-    switch (static_cast<MsgType>(f.type)) {
-        case MsgType::Hello: {
-            swp::HelloAck a;
-            a.role = static_cast<uint8_t>(swp::Role::Watch);
-            a.capabilities = own_caps();
-            a.firmware = fw_version();
-            a.device_name = "SW Watch";
-            send_web(a);
-            break;
-        }
-        case MsgType::StatusRequest:
-            send_device_info_web();
-            web_forward.store(true);
-            if (ready()) send(swp::StatusRequest{});
-            break;
-        case MsgType::WatchSettingsRequest:
-            send_web(settings::get());
-            break;
-        case MsgType::WatchSettings:
-            if (auto m = swp::decode_message<swp::WatchSettings>(f)) {
-                settings::set(*m);
-                services::set_step_threshold_mg(m->step_threshold_mg);
-                app::mark(app::kDirtySettings | app::kDirtyTime);
-                send_web(settings::get());
-            }
-            break;
-        case MsgType::WifiConfigSet:
-        case MsgType::WifiStatusRequest:
-        case MsgType::ConfigSet:
-        case MsgType::ConfigGet:
-            // Relay companion configuration through the watch's authenticated link.
-            web_forward.store(true);
-            if (ready()) {
-                enqueue(Target::Companion, f.type, std::vector<uint8_t>(f.payload));
-            } else {
-                swp::Error e;
-                e.code = static_cast<uint8_t>(swp::ErrorCode::Unavailable);
-                e.ref_type = f.type;
-                e.message = "companion not connected";
-                send_web(e);
-            }
-            break;
-        default: {
-            swp::Error e;
-            e.code = static_cast<uint8_t>(swp::ErrorCode::NotSupported);
-            e.ref_type = f.type;
-            e.message = "not supported by watch";
-            send_web(e);
-        }
     }
 }
 
@@ -414,7 +338,7 @@ void health_cb(void*) {
 }  // namespace
 
 void init() {
-    txq = xQueueCreate(kTxQueueLen, sizeof(TxItem));
+    txq = xQueueCreate(kTxQueueLen, sizeof(std::vector<uint8_t>*));
     xTaskCreatePinnedToCore(tx_task, "ble_tx", 4096, nullptr, 8, nullptr, 0);
     esp_timer_create_args_t a = {};
     a.callback = health_cb;
@@ -424,17 +348,15 @@ void init() {
     esp_timer_start_periodic(t, kHeartbeatUs);
 }
 
-bool enqueue(Target t, uint8_t type, std::vector<uint8_t>&& payload) {
-    if (t == Target::Companion && !central::connected()) return false;
-    if (t == Target::Web && !web_up.load()) return false;
+bool enqueue(uint8_t type, std::vector<uint8_t>&& payload) {
+    if (!central::connected()) return false;
     auto* frame = new (std::nothrow) std::vector<uint8_t>();
     if (!frame) return false;
     if (!swp::encode_frame(type, seq.fetch_add(1), payload, *frame)) {
         delete frame;
         return false;
     }
-    TxItem it{t, frame};
-    if (xQueueSend(txq, &it, 0) != pdTRUE) {
+    if (xQueueSend(txq, &frame, 0) != pdTRUE) {
         ESP_LOGW(TAG, "tx queue full; dropping 0x%02x", type);
         delete frame;
         return false;
@@ -465,8 +387,9 @@ void on_companion_down() {
         s->search_pending = false;
         s->route_pending = false;
         s->link.peer_audio_active = false;
+        s->web_config_open = false;
     }
-    app::mark(app::kDirtyLink | app::kDirtySearch | app::kDirtyRoute);
+    app::mark(app::kDirtyLink | app::kDirtySearch | app::kDirtyRoute | app::kDirtyWebConfig);
 }
 
 void on_companion_bytes(const uint8_t* data, size_t len) {
@@ -475,25 +398,6 @@ void on_companion_bytes(const uint8_t* data, size_t len) {
     swp::FrameDecoder::Result r;
     while ((r = dec_companion.next(f)) != swp::FrameDecoder::Result::NeedMore)
         if (r == swp::FrameDecoder::Result::Frame) handle_companion(f);
-}
-
-void on_web_connected() {
-    dec_web.reset();
-    web_up.store(true);
-}
-
-void on_web_down() {
-    web_up.store(false);
-    web_forward.store(false);
-    dec_web.reset();
-}
-
-void on_web_bytes(const uint8_t* data, size_t len) {
-    dec_web.feed(data, len);
-    swp::Frame f;
-    swp::FrameDecoder::Result r;
-    while ((r = dec_web.next(f)) != swp::FrameDecoder::Result::NeedMore)
-        if (r == swp::FrameDecoder::Result::Frame) handle_web(f);
 }
 
 void request_playlists() { send(swp::PlaylistsRequest{}); }

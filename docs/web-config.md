@@ -1,49 +1,24 @@
-# Web Bluetooth configuration app
+# Web configuration (companion LAN page)
 
-`web/` builds to static files (`build/web/`) for Cloudflare Pages: no backend, no secrets in
-the bundle, strict CSP (`web/public/_headers`, `connect-src 'none'`).
-
-## Deploy (Cloudflare Pages)
-
-```bash
-scripts/sw build web               # -> build/web
-npx wrangler pages deploy build/web --project-name sw-setup   # or connect the repo in the dashboard:
-#   build command: cd web && npm ci && npm run build   output: build/web
-```
+The companion can serve its settings as a plain web page at `http://<companion-ip>/`, so
+tokens and URLs can be pasted from a phone or PC instead of typed on the watch.
 
 ## Using it
 
-1. Companion: power-cycle it (or press BOOT) to open the 5-minute pairing window. The
-   passkey is fixed to `616616` for the prototype and also printed on its serial console (`BLE pairing passkey: 616616`).
-   Watch: Settings → Web configuration (advertises for 5 minutes).
-2. Open the page, tap **Connect device**, pick the device, accept the pairing prompt and
-   enter/confirm the code.
-3. Edit Wi-Fi, server/Navidrome settings (companion) or notification/vibration/display/time
-   zone (watch). Secrets are write-only.
+1. Watch → Settings → Web configuration → **Open for 5 minutes**. The watch shows the URL
+   (e.g. `http://192.168.1.109/`) and a countdown; **Close now** ends it early.
+2. Open the URL in any browser on the same Wi-Fi network.
+3. Edit Wi-Fi, helper, ntfy and Navidrome settings and press **Save**. Secrets (passwords,
+   tokens) are never shown; leave them empty to keep the saved value.
 
-## Browser support
+The page lists the same whitelisted keys with the same validation as the watch's Settings
+→ Server screen (e.g. URLs must be `https://`).
 
-* **iPhone: Safari and every WebKit browser lack Web Bluetooth.** Use **Bluefy**, a
-  third-party browser that bridges Web Bluetooth to CoreBluetooth. The page must be served
-  over HTTPS (Cloudflare Pages is).
-* Desktop/Android: Chrome, Edge, Opera.
+## Security
 
-Known/assumed Bluefy limitations and how the app copes (not yet verified on a device):
-
-| Limitation | Mitigation |
-|------------|------------|
-| ATT MTU not exposed | RX writes are chunked to 20 bytes |
-| `writeValueWithResponse` may be missing in older versions | falls back to `writeValue()` |
-| Pairing is performed by iOS when an encrypted characteristic is first used; stale iOS bonds after reflashing a device cause immediate disconnects | "Forget This Device" in iOS Settings → Bluetooth, then reconnect |
-| No `getDevices()`/background reconnection | the user taps Connect each visit (by design: user gesture required) |
-| Reports of anecdotal disconnect-after-pairing issues | toggle iOS Bluetooth, unpair, retry |
-
-Sources: Bluefy App Store listing; third-party compatibility notes. Re-test after Bluefy updates.
-
-## LAN page (no app needed)
-
-While the companion's pairing window is open (5 min after boot, 2 min after pressing BOOT)
-it also serves a settings page at `http://<companion-ip>/` (the address is in its serial log
-and your router's client list). It's the same key list with the same validation, and secrets
-are write-only (leave empty to keep). The page is plain HTTP, so use it only on a trusted
-network; the server stops when the window closes, and cross-site form posts are refused.
+* Plain HTTP: anyone on the same network can read what you submit and, while the page is
+  open, change settings. Use it on a trusted network only, never on public Wi-Fi.
+* The HTTP server only runs while the watch has the page open (5 min, at most 10); it is
+  stopped afterwards and on companion reboot.
+* Cross-site form posts are refused (`Origin` must match the companion's address), so a web
+  page in the same browser cannot change settings behind your back.

@@ -1,4 +1,4 @@
-// BLE GATT server (Bluedroid) exposing the SWP service to the watch and the web config app.
+// BLE GATT server (Bluedroid) exposing the SWP service to the watch.
 //
 // Security: LE Secure Connections with MITM protection and bonding. The companion has no
 // display, so it uses a static 6-digit passkey (printed on the serial console at boot and

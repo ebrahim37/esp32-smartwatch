@@ -2,14 +2,13 @@
 # Project tool: build, test, package and flash. All output goes to build/ (git-ignored):
 #   build/watch, build/companion   ESP-IDF build dirs (sdkconfig lives there too)
 #   build/server                   cargo target dir
-#   build/web                      static web config app (Cloudflare Pages output)
 #   build/host                     C++ host tests
 #   build/dist/{watch,companion}   flashable images, offsets, merged image, manifest
 #   build/cache                    ESP-IDF component and font downloads
 #
 # Usage: scripts/sw <command> [args]
-#   build [watch|companion|server|web|all]   default: all
-#   test                                     C++ (ASan/UBSan), TypeScript, Rust + clippy
+#   build [watch|companion|server|all]       default: all
+#   test                                     C++ (ASan/UBSan), Rust + clippy
 #   package                                  firmware images -> build/dist/
 #   flash watch|companion [PORT] [--monitor] writes build/dist/<target> over USB
 #   monitor watch|companion [PORT]           serial console
@@ -18,7 +17,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 B="$ROOT/build"
 
-# Re-enter the Nix dev shell (ESP-IDF, Rust, Node) when the toolchain is not loaded.
+# Re-enter the Nix dev shell (ESP-IDF, Rust) when the toolchain is not loaded.
 if { [ -z "${IDF_PATH:-}" ] || ! command -v cargo >/dev/null 2>&1; } && [ -z "${SW_IN_NIX:-}" ]; then
     export SW_IN_NIX=1
     exec nix develop "$ROOT" --command "$0" "$@"
@@ -46,25 +45,11 @@ build_server() {
     ls -lh "$B/server/release/sw-helper"
 }
 
-web_deps() { (cd "$ROOT/web" && { [ -d node_modules ] || npm ci --no-audit --no-fund; }); }
-build_web() {
-    web_deps
-    (cd "$ROOT/web" && npm run build)
-}
-
 run_tests() {
     echo "== C++ host tests =="
     cmake -S "$ROOT/tests/host" -B "$B/host" -G Ninja -DCMAKE_BUILD_TYPE=Debug >/dev/null
     cmake --build "$B/host"
     (cd "$B/host" && ctest --output-on-failure)
-    "$B/host/swp_fixtures" > "$B/host/fixtures.json"
-    if ! diff -q "$B/host/fixtures.json" "$ROOT/web/src/protocol/fixtures.json" >/dev/null; then
-        echo "web/src/protocol/fixtures.json is stale; regenerating"
-        cp "$B/host/fixtures.json" "$ROOT/web/src/protocol/fixtures.json"
-    fi
-    echo "== Web tests =="
-    web_deps
-    (cd "$ROOT/web" && npx vitest run && npx tsc --noEmit)
     echo "== Server tests =="
     (cd "$ROOT/server" && cargo test --locked && cargo clippy --locked --all-targets -- -D warnings)
     echo "All host tests passed."
@@ -158,9 +143,8 @@ case "$cmd" in
         case "${1:-all}" in
             watch | companion) build_fw "$1" ;;
             server) build_server ;;
-            web) build_web ;;
-            all) build_fw watch && build_fw companion && build_server && build_web ;;
-            *) echo "build [watch|companion|server|web|all]" >&2; exit 2 ;;
+            all) build_fw watch && build_fw companion && build_server ;;
+            *) echo "build [watch|companion|server|all]" >&2; exit 2 ;;
         esac
         ;;
     test) run_tests ;;
@@ -171,5 +155,5 @@ case "$cmd" in
         idf "$t" -p "${2:-$(default_port "$t")}" monitor
         ;;
     fonts) fonts ;;
-    *) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; [ "$cmd" = help ] ;;
+    *) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; [ "$cmd" = help ] ;;
 esac

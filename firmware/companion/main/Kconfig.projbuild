@@ -6,7 +6,7 @@ config PROTOTYPE_PLAYLIST_ID
     help
         TODO(PROTOTYPE): the prototype synchronises exactly one Navidrome playlist. This is the
         build-time default for the `nd_playlist` configuration key, which can be changed at
-        runtime over BLE (Settings / web config) without reflashing. Production firmware will
+        runtime (watch Settings or the LAN settings page) without reflashing. Production firmware will
         sync a user-selected set of playlists.
 
 config COMPANION_PAIRING_WINDOW_S
@@ -19,7 +19,7 @@ config COMPANION_PROTOTYPE_PASSKEY
     default 616616
     help
         TODO(PROTOTYPE): the prototype uses one fixed, publicly known 6-digit passkey so the
-        watch and web config can pair without reading the serial console. Anyone in radio
+        watch can pair without reading the serial console. Anyone in radio
         range during the pairing window can bond with it. Production firmware must use a
         per-device random passkey (or a passkey shown on a display).
 

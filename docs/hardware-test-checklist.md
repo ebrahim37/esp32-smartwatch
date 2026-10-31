@@ -45,7 +45,7 @@ through it in order and note the results in `agent/firmware/progress.md`.
 - [ ] Turn the companion's Wi-Fi off: previously viewed tiles still load (SD cache).
 
 ## 5. Music / AirPods (unverified on AirPods — TODO(HARDWARE))
-- [ ] Companion log lists `available playlist: id=…` if `nd_playlist` is unset; set it via web app.
+- [ ] Companion log lists `available playlist: id=…` if `nd_playlist` is unset; set it on the watch or the LAN settings page.
 - [ ] Sync downloads originals into `/sdcard/music`; interrupt Wi-Fi mid-file → resumes (`Range`) later; removing a song from the playlist deletes it on the next sync.
 - [ ] Watch Connections → AirPods → Search (AirPods in pairing mode, case button held) → select → `Connected`.
 - [ ] Reboot companion: AirPods reconnect automatically.
@@ -57,7 +57,7 @@ through it in order and note the results in `agent/firmware/progress.md`.
 - [ ] Timer completion with AirPods connected plays beeps and vibrates.
 
 ## 6. Web configuration
-- [ ] `scripts/sw build web`, deploy or `npx vite preview --host` behind HTTPS.
-- [ ] iPhone + Bluefy: Connect → companion → passkey prompt → status, Wi-Fi, services keys visible; secrets shown only as set/not set.
-- [ ] Watch Settings → Web configuration → connect from Bluefy → passkey/compare code shown on the watch → watch settings editable.
-- [ ] Desktop Chrome: same flows.
+- [ ] Watch Settings → Web configuration → Open for 5 minutes → the watch shows `http://<companion-ip>/` and a countdown.
+- [ ] The page loads from a phone/PC on the same Wi-Fi; secrets show only as saved/not set; a non-https URL is rejected.
+- [ ] Saving a value is reflected on the watch (Settings → Server).
+- [ ] Close now (or the countdown reaching 0) makes the page unreachable.

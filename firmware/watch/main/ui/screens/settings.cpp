@@ -7,7 +7,6 @@
 #include "app/state.hpp"
 #include "ble/central.hpp"
 #include "ble/link.hpp"
-#include "ble/peripheral.hpp"
 #include "board.hpp"
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
@@ -631,6 +630,67 @@ public:
     }
 };
 
+// ---- Web configuration -------------------------------------------------------------------
+// Opens the companion's LAN settings page (http://<companion-ip>/) for 5 minutes.
+
+class WebConfigScreen : public ListScreen {
+public:
+    const char* title() const override { return "Web config"; }
+    void refresh(uint32_t d) override {
+        if (d & (app::kDirtyWebConfig | app::kDirtyLink)) rebuild();
+    }
+    void tick() override {
+        if (open_now()) rebuild();  // countdown
+    }
+    void populate() override {
+        bool ready, open;
+        std::string url;
+        {
+            app::Locked s;
+            ready = s->link.state == app::LinkState::Ready;
+            open = s->web_config_open;
+            url = s->web_config_url;
+        }
+        if (!ready) {
+            section_header(c_, "Companion not connected");
+            return;
+        }
+        int left = remaining_s();
+        if (open && left > 0) {
+            section_header(c_, url.empty() ? "Waiting for the companion's Wi-Fi address" : ("Open " + url + " in a browser on the same network").c_str());
+            char t[16];
+            snprintf(t, sizeof t, "%d:%02d", left / 60, left % 60);
+            list_row(c_, "Closes in", nullptr, t);
+            list_row(c_, "Close now", nullptr, nullptr, [] {
+                swp::WebConfigCommand c;
+                swlink::send(c);
+            }, color::red(), LV_SYMBOL_CLOSE);
+        } else {
+            section_header(c_, "Lets a browser on your Wi-Fi change the companion's settings for 5 minutes. Plain HTTP: use only on a trusted network.");
+            list_row(c_, "Open for 5 minutes", nullptr, nullptr, [] {
+                swp::WebConfigCommand c;
+                c.seconds = 300;
+                swlink::send(c);
+            }, color::blue(), LV_SYMBOL_PLAY);
+        }
+    }
+
+private:
+    static int remaining_s() {
+        app::Locked s;
+        int64_t left = s->web_config_until_us - esp_timer_get_time();
+        return left > 0 ? static_cast<int>((left + 999999) / 1000000) : 0;
+    }
+    static bool open_now() {
+        bool open;
+        {
+            app::Locked s;
+            open = s->web_config_open;
+        }
+        return open && remaining_s() > 0;
+    }
+};
+
 // ---- Settings root ---------------------------------------------------------------------
 
 class SettingsScreen : public ListScreen {
@@ -671,16 +731,13 @@ public:
                 app::mark(app::kDirtyTime | app::kDirtySettings);
             });
         }, color::orange(), LV_SYMBOL_LOOP);
-        bool adv, web;
+        bool web;
         {
             app::Locked s;
-            adv = s->web_advertising;
-            web = s->web_connected;
+            web = s->web_config_open && s->web_config_until_us > esp_timer_get_time();
         }
-        list_row(c_, "Web configuration", web ? "Browser connected" : adv ? "Visible for 5 minutes" : "Allow a browser to connect", nullptr, [adv] {
-            if (adv) peripheral::stop_advertising();
-            else peripheral::start_advertising(300);
-        }, color::purple(), LV_SYMBOL_SETTINGS);
+        list_row(c_, "Web configuration", web ? "Open on the companion's IP" : "Companion settings in a browser", nullptr,
+                 [] { push(new WebConfigScreen()); }, color::purple(), LV_SYMBOL_SETTINGS);
         list_row(c_, "About", nullptr, nullptr, [] { push(new DeviceInfoScreen()); }, color::card2(), LV_SYMBOL_LIST);
     }
 };

@@ -18,6 +18,7 @@
 #include "ntfy.hpp"
 #include "position.hpp"
 #include "storage.hpp"
+#include "web_config.hpp"
 #include "swp/messages.hpp"
 
 namespace dispatch {
@@ -262,6 +263,9 @@ void on_frame(uint16_t conn, const swp::Frame& f) {
                     send_config_value(conn, *k);
                 }
             }
+            break;
+        case MsgType::WebConfigCommand:
+            if (auto m = swp::decode_message<swp::WebConfigCommand>(f)) web_config::open(std::min<uint16_t>(m->seconds, 600));
             break;
         case MsgType::StatusRequest: {
             ble_server::send(conn, companion_status());

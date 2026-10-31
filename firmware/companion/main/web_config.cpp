@@ -1,5 +1,6 @@
 #include "web_config.hpp"
 
+#include <atomic>
 #include <string>
 #include <vector>
 
@@ -7,6 +8,7 @@
 #include "config.hpp"
 #include "esp_http_server.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "net.hpp"
@@ -17,6 +19,8 @@ namespace {
 constexpr const char* TAG = "webcfg";
 constexpr size_t kMaxBody = 6 * 1024;  // all keys URL-encoded, with headroom
 httpd_handle_t server = nullptr;
+std::atomic<int64_t> open_until_us{0};
+std::atomic<bool> wake{false};
 
 std::string html_escape(const std::string& s) {
     std::string o;
@@ -79,7 +83,7 @@ std::string render(const std::string& message, bool error) {
         "button{margin-top:20px;width:100%;padding:12px;border:0;border-radius:10px;background:#0a84ff;color:#fff;font:600 17px system-ui}"
         ".msg{padding:10px;border-radius:8px;background:#123;margin:12px 0}.err{background:#411}"
         "small{color:#777}</style></head><body><h2>SW Companion</h2>"
-        "<p><small>Available while the pairing window is open (press BOOT to reopen). "
+        "<p><small>Open for 5 minutes from watch Settings &rarr; Web configuration. "
         "Secrets are never shown; leave them empty to keep the saved value.</small></p>";
     if (!message.empty()) h += "<div class=\"msg" + std::string(error ? " err" : "") + "\">" + html_escape(message) + "</div>";
     h += "<form method=post action=\"/\">";
@@ -180,31 +184,48 @@ void start_server() {
     httpd_register_uri_handler(server, &post);
 }
 
+bool window_open() { return esp_timer_get_time() < open_until_us.load(); }
+
 void task(void*) {
-    std::string announced;
+    swp::WebConfigStatus last;
     for (;;) {
-        bool open = ble_server::pairing_window_open();
+        bool open = window_open();
         if (open && !server) {
             start_server();
-            announced.clear();
         } else if (!open && server) {
             httpd_stop(server);
             server = nullptr;
-            ESP_LOGI(TAG, "config page closed (pairing window over)");
+            ESP_LOGI(TAG, "settings page closed");
         }
-        if (server) {
-            std::string ip = ip_string();
-            if (!ip.empty() && ip != announced) {
-                ESP_LOGI(TAG, "config page: http://%s/ (until the pairing window closes)", ip.c_str());
-                announced = ip;
-            }
+        // Tell the watch when the page opens/closes or the address changes; the watch counts
+        // the remaining time down itself.
+        swp::WebConfigStatus st = status();
+        if (st.open != last.open || st.url != last.url || wake.exchange(false)) {
+            if (st.open && !st.url.empty()) ESP_LOGI(TAG, "settings page: %s (%u s)", st.url.c_str(), st.remaining_s);
+            ble_server::to_watch(st);
+            last = st;
         }
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
 
 }  // namespace
 
 void start() { xTaskCreatePinnedToCore(task, "webcfg", 3072, nullptr, 3, nullptr, 0); }
+
+void open(uint16_t seconds) {
+    open_until_us.store(seconds ? esp_timer_get_time() + static_cast<int64_t>(seconds) * 1000000 : 0);
+    wake.store(true);  // always answer the request, even if nothing changed
+}
+
+swp::WebConfigStatus status() {
+    swp::WebConfigStatus st;
+    int64_t left = open_until_us.load() - esp_timer_get_time();
+    st.open = left > 0 && server != nullptr;
+    st.remaining_s = left > 0 ? static_cast<uint16_t>((left + 999999) / 1000000) : 0;
+    std::string ip = ip_string();
+    if (st.open && !ip.empty()) st.url = "http://" + ip + "/";
+    return st;
+}
 
 }  // namespace web_config

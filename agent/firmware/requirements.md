@@ -15,7 +15,7 @@ Source: the user's implementation brief (2026-10-30). Condensed checklist; statu
 - Every non-keyboard screen has Back + Home. Reusable keyboard (label, cursor, shift, 123, backspace, submit/cancel).
 - Apps: Timer (10:00 default), Stopwatch, Calculator, Alarm, Calendar, Weather, Maps, Music, Voice memos (disabled), Settings (connections: companion/phone/AirPods/Wi-Fi; ntfy; vibration; device info).
 - Notifications: companion subscribes to ntfy over HTTPS (at-least-once cursor, dedup), BLE delivery with ack, history/dismiss.
-- Web: static TS/Vite, Web Bluetooth (Bluefy), no secrets, secure pairing required.
+- Web config: companion LAN page (plain HTTP, trusted network), opened from the watch for 5 min; secrets write-only.
 - Server: Rust/Axum, env config, tests, Containerfile, deployment docs.
 - TODO markers: PROTOTYPE / HARDWARE / LTE / PHONE with explanation.
 - Deliverables: builds, build/dist binaries + flash offsets, scripts, docs, checklist, progress.md.

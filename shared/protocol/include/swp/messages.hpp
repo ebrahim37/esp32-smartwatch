@@ -85,12 +85,13 @@ enum class MsgType : uint8_t {
     ConfigSet = 0x70,
     ConfigGet = 0x71,
     ConfigValue = 0x72,
+    WebConfigCommand = 0x73,
+    WebConfigStatus = 0x74,
 
     StatusRequest = 0x78,
     CompanionStatus = 0x79,
     DeviceInfo = 0x7A,
     WatchSettings = 0x7B,
-    WatchSettingsRequest = 0x7C,
 };
 
 const char* msg_type_name(MsgType t);
@@ -106,10 +107,9 @@ enum Capability : uint32_t {
     kCapAudioDevices = 1u << 7,
     kCapConfig = 1u << 8,
     kCapTransfer = 1u << 9,
-    kCapWatchSettings = 1u << 10,
 };
 
-enum class Role : uint8_t { Watch = 1, Companion = 2, WebConfig = 3, Phone = 4 };
+enum class Role : uint8_t { Watch = 1, Companion = 2, Phone = 4 };
 
 // Shorthand for declaring a message struct's type tag.
 #define SWP_MSG(name) static constexpr MsgType kType = MsgType::name
@@ -654,6 +654,24 @@ struct ConfigValue {
     void fields(A& a) { a.str8(key); a.u8(is_set); a.u8(secret); a.str16(value, 512); a.u8(status); }
 };
 
+// Watch -> companion: open (seconds > 0) or close (0) the LAN settings page
+// (http://<companion-ip>/). The companion answers with WebConfigStatus, and again on change.
+struct WebConfigCommand {
+    SWP_MSG(WebConfigCommand);
+    uint16_t seconds = 0;
+    template <class A>
+    void fields(A& a) { a.u16(seconds); }
+};
+
+struct WebConfigStatus {
+    SWP_MSG(WebConfigStatus);
+    uint8_t open = 0;
+    uint16_t remaining_s = 0;
+    std::string url;  // empty while the companion has no IP address
+    template <class A>
+    void fields(A& a) { a.u8(open); a.u16(remaining_s); a.str8(url); }
+};
+
 struct StatusRequest {
     SWP_MSG(StatusRequest);
     template <class A>
@@ -719,11 +737,6 @@ struct WatchSettings {
     }
 };
 
-struct WatchSettingsRequest {
-    SWP_MSG(WatchSettingsRequest);
-    template <class A>
-    void fields(A&) {}
-};
 
 #undef SWP_MSG
 

@@ -6,7 +6,7 @@
 
 namespace central {
 
-// Initialises NimBLE (shared with the peripheral role) and starts the connection manager.
+// Initialises NimBLE and starts the connection manager.
 void init();
 
 bool connected();     // GATT link up (may still be handshaking)

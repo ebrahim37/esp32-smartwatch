@@ -29,6 +29,3 @@ add_test(NAME watch_core COMMAND watch_core_tests)
 add_executable(companion_core_tests test_companion_core.cpp)
 target_link_libraries(companion_core_tests PRIVATE companion_core)
 add_test(NAME companion_core COMMAND companion_core_tests)
-
-add_executable(swp_fixtures gen_fixtures.cpp)
-target_link_libraries(swp_fixtures PRIVATE swp)

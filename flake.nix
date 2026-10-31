@@ -1,5 +1,5 @@
 {
-  description = "ESP32 smartwatch + companion: firmware, VPS helper and web config dev environment";
+  description = "ESP32 smartwatch + companion: firmware and VPS helper dev environment";
 
   inputs = {
     # Pinned: provides the Nix packaging for ESP-IDF and the Espressif toolchains.
@@ -56,7 +56,7 @@
             pkgs.clippy
             pkgs.rustfmt
             pkgs.pkg-config
-            pkgs.nodejs_22
+            pkgs.nodejs_22  # npx lv_font_conv (scripts/sw fonts)
             pkgs.gnumake
             pkgs.gcc
             pkgs.jq
@@ -72,9 +72,9 @@
           '';
         };
 
-        # Lightweight shell for host-side tests and server/web work without ESP-IDF.
+        # Lightweight shell for host-side tests and server work without ESP-IDF.
         devShells.host = pkgs.mkShell {
-          buildInputs = [ pkgs.rustc pkgs.cargo pkgs.clippy pkgs.rustfmt pkgs.nodejs_22 pkgs.cmake pkgs.ninja pkgs.gcc pkgs.jq ];
+          buildInputs = [ pkgs.rustc pkgs.cargo pkgs.clippy pkgs.rustfmt pkgs.cmake pkgs.ninja pkgs.gcc pkgs.jq ];
         };
       });
 }

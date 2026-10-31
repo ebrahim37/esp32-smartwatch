@@ -78,7 +78,7 @@ struct ScanEntry {
     int8_t rssi = 0;
 };
 
-enum class PasskeyMode : uint8_t { None, EnterForCompanion, DisplayForWeb, ConfirmForWeb };
+enum class PasskeyMode : uint8_t { None, EnterForCompanion };
 
 struct Alert {
     enum Kind : uint8_t { Timer, Alarm, Notification, Info } kind = Info;
@@ -93,7 +93,6 @@ struct State {
     bool scanning = false;
 
     PasskeyMode passkey_mode = PasskeyMode::None;
-    uint32_t passkey_value = 0;  // displayed / compared value
 
     bool weather_valid = false;
     swp::Weather weather;
@@ -130,8 +129,10 @@ struct State {
 
     std::vector<Alert> alerts;
 
-    bool web_advertising = false;
-    bool web_connected = false;
+    // Companion LAN settings page (WebConfigStatus); the countdown runs locally.
+    bool web_config_open = false;
+    std::string web_config_url;
+    int64_t web_config_until_us = 0;
     std::string last_error_text;  // last Error from the companion (shown as a toast)
 };
 

@@ -6,7 +6,6 @@
 #include "app/settings.hpp"
 #include "app/state.hpp"
 #include "ble/central.hpp"
-#include "ble/peripheral.hpp"
 #include "board.hpp"
 #include "esp_log.h"
 
@@ -21,7 +20,6 @@ lv_obj_t* toast_obj = nullptr;
 lv_timer_t* toast_timer = nullptr;
 lv_obj_t* alert_obj = nullptr;
 lv_obj_t* banner_obj = nullptr;
-lv_obj_t* passkey_obj = nullptr;
 app::PasskeyMode shown_passkey = app::PasskeyMode::None;
 
 void style_screen(lv_obj_t* o) {
@@ -156,15 +154,12 @@ void show_next_alert() {
 
 void update_passkey_overlay() {
     app::PasskeyMode mode;
-    uint32_t value;
     {
         app::Locked s;
         mode = s->passkey_mode;
-        value = s->passkey_value;
     }
     if (mode == shown_passkey) return;
     shown_passkey = mode;
-    close_overlay(passkey_obj);
     if (mode == app::PasskeyMode::EnterForCompanion) {
         KeyboardOpts o;
         o.label = "Companion passkey";
@@ -173,28 +168,6 @@ void update_passkey_overlay() {
         open_keyboard(o, [](const std::string& s) { central::submit_passkey(static_cast<uint32_t>(strtoul(s.c_str(), nullptr, 10))); },
                       [] { central::cancel_passkey(); });
         return;
-    }
-    if (mode == app::PasskeyMode::DisplayForWeb || mode == app::PasskeyMode::ConfirmForWeb) {
-        passkey_obj = modal_base();
-        lv_obj_t* t = label(passkey_obj, "Pairing request", &font_inter_24, color::muted());
-        lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 80);
-        char buf[16];
-        snprintf(buf, sizeof buf, "%06lu", static_cast<unsigned long>(value));
-        lv_obj_t* code = label(passkey_obj, buf, &font_digits_64, color::text());
-        lv_obj_align(code, LV_ALIGN_TOP_MID, 0, 150);
-        lv_obj_t* hint = label(passkey_obj, mode == app::PasskeyMode::DisplayForWeb ? "Enter this code on the other device" : "Does the other device show this code?",
-                               &font_inter_20, color::muted());
-        lv_obj_set_width(hint, 340);
-        lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
-        lv_obj_align(hint, LV_ALIGN_TOP_MID, 0, 250);
-        if (mode == app::PasskeyMode::ConfirmForWeb) {
-            lv_obj_t* y = pill_button(passkey_obj, "Accept", color::green(), [] { peripheral::confirm_numeric(true); }, 170, 60);
-            lv_obj_align(y, LV_ALIGN_BOTTOM_RIGHT, -24, -50);
-            lv_obj_t* n = pill_button(passkey_obj, "Reject", color::card2(), [] { peripheral::confirm_numeric(false); }, 170, 60);
-            lv_obj_align(n, LV_ALIGN_BOTTOM_LEFT, 24, -50);
-        }
-    } else if (current() && current()->has_top_bar() == false && mode == app::PasskeyMode::None && stack.size() > 1) {
-        // Passkey keyboard is closed by the user; nothing else to do.
     }
 }
 

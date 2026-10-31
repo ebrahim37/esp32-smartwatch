@@ -1,7 +1,7 @@
 // Watch firmware entry point.
 //
 // Boot order: NVS -> settings -> board (I2C, PMIC, display/LVGL, touch, IMU, motor) ->
-// state -> UI -> services -> BLE link + central/peripheral.
+// state -> UI -> services -> BLE link + central.
 #include "app/services.hpp"
 #include "app/settings.hpp"
 #include "app/state.hpp"

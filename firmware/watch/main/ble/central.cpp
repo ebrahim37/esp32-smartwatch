@@ -6,7 +6,6 @@
 #include "app/settings.hpp"
 #include "app/state.hpp"
 #include "ble/link.hpp"
-#include "ble/peripheral.hpp"
 #include "esp_log.h"
 #include "esp_random.h"
 #include "freertos/FreeRTOS.h"
@@ -16,8 +15,6 @@
 #include "host/util/util.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
-#include "services/gap/ble_svc_gap.h"
-#include "services/gatt/ble_svc_gatt.h"
 #include "swp/messages.hpp"
 
 extern "C" void ble_store_config_init(void);
@@ -493,7 +490,6 @@ void on_sync() {
     ble_hs_util_ensure_addr(0);
     ble_hs_id_infer_auto(0, &own_addr_type);
     synced.store(true);
-    peripheral::on_sync();
     post(Cmd::Evaluate);
 }
 
@@ -520,17 +516,13 @@ void init() {
     ble_hs_cfg.reset_cb = on_reset;
     ble_hs_cfg.sync_cb = on_sync;
     ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
-    // Keyboard+display: we enter the companion's passkey and display ours to the web app.
+    // Keyboard+display: we enter the companion's passkey (kept as-is so existing bonds stay valid).
     ble_hs_cfg.sm_io_cap = BLE_HS_IO_KEYBOARD_DISPLAY;
     ble_hs_cfg.sm_bonding = 1;
     ble_hs_cfg.sm_mitm = 1;
     ble_hs_cfg.sm_sc = 1;
     ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
     ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
-    ble_svc_gap_init();
-    ble_svc_gatt_init();
-    ble_svc_gap_device_name_set("SW Watch");
-    peripheral::register_services();
     ble_store_config_init();
     xTaskCreatePinnedToCore(mgr_task, "ble_mgr", 4096, nullptr, 5, nullptr, 0);
     nimble_port_freertos_init(host_task);

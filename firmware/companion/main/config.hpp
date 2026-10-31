@@ -2,7 +2,7 @@
 //
 // Keys are whitelisted. Secret keys are write-only over BLE: they can be set but are never
 // returned (ConfigValue only reports whether they are set). Nothing here is compiled into
-// the firmware image; set them over BLE (watch Settings → Server / Wi-Fi, or the web app).
+// the firmware image; set them over BLE (watch Settings → Server / Wi-Fi) or on the LAN settings page (web_config.hpp).
 #pragma once
 
 #include <string>

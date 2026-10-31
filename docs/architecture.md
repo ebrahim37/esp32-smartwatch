@@ -5,12 +5,12 @@
  │ LVGL 9 UI ─ nav stack ─ screens         │◄─────────────────────►│ GATT server ─ dispatcher              │◄──────►│ weather (Open-Meteo)      │
  │ app::State (mutex + dirty bits)         │  watch = central      │ cloud worker: weather/maps; ntfy sub  │ bearer │ tiles (recolour+quantise) │
  │ services: IMU steps/heading, timer,     │                       │ net: Wi-Fi provider (+ LTE stub)      │  token │ search (Photon/Overpass)  │
- │   stopwatch, alarms, power              │  peripheral (5-min    │ storage: SD FAT32, quotas, tile LRU   │        │ routing (OSRM)            │
- │ swlink: framing, TX queue, transfers    │  window) for web app  │ music: Navidrome sync, decoder,       │        │ map data (Geofabrik→OSRM) │
+ │   stopwatch, alarms, power              │                       │ storage: SD FAT32, quotas, tile LRU   │        │ routing (OSRM)            │
+ │ swlink: framing, TX queue, transfers    │                       │ music: Navidrome sync, decoder,       │        │ map data (Geofabrik→OSRM) │
  │ board HAL: BSP display/touch, AXP2101,  │                       │   A2DP source + AVRCP ──► AirPods     │        └───────────────────────────┘
  │   QMI8658, motor                        │                       │ position: simulated (→ GNSS)          │   Navidrome (Subsonic) via Caddy
  └─────────────────────────────────────────┘                       └───────────────────────────────────────┘
-                     ▲  Web Bluetooth (Bluefy / Chrome), static site on Cloudflare Pages
+                                                                     ▲  LAN settings page http://<ip>/ (5 min, opened from the watch)
 ```
 
 ## Responsibilities

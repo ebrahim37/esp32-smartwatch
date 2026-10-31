@@ -1,7 +1,7 @@
 # ESP32 smartwatch ecosystem
 
 Custom smartwatch (ESP32-S3, LVGL 9) + wireless companion (ESP32: Wi-Fi, SD, AirPods audio)
-+ Rust VPS helper + static Web Bluetooth configuration site. Prototype hardware: Waveshare
++ Rust VPS helper. Prototype hardware: Waveshare
 ESP32-S3-Touch-AMOLED-2.06 (watch) and Freenove FNK0060 ESP32-WROVER (companion).
 
 ```
@@ -9,19 +9,18 @@ firmware/watch/       ESP-IDF 5.5.5 watch firmware (board HAL in components/boar
 firmware/companion/   ESP-IDF 5.5.5 companion firmware (logic in components/companion_core)
 shared/protocol/      SWP: versioned binary BLE protocol (C++17), docs/protocol.md
 server/               Rust/Axum VPS helper (container: see server/README.md)
-web/                  TypeScript/Vite Web Bluetooth config app (Cloudflare Pages)
 tests/host/           host unit tests for all hardware-independent C++ code
 scripts/sw            build, test, package, flash, monitor, fonts
-docs/                 architecture, protocol, hardware, flashing, server, web, test checklist
+docs/                 architecture, protocol, hardware, flashing, server, web config, test checklist
 build/                all build output and caches, git-ignored (build/dist: flashable images)
 ```
 
 ## Build
 
 ```bash
-nix develop                     # ESP-IDF v5.5.5 + toolchains, Rust, Node (first run downloads ~1 GB)
-scripts/sw build                # or: build watch|companion|server|web
-scripts/sw test                 # C++ (ASan/UBSan), TypeScript and Rust tests + clippy
+nix develop                     # ESP-IDF v5.5.5 + toolchains, Rust (first run downloads ~1 GB)
+scripts/sw build                # or: build watch|companion|server
+scripts/sw test                 # C++ (ASan/UBSan) and Rust tests + clippy
 scripts/sw package              # build/dist/{watch,companion}: images, offsets, merged image
 ```
 
@@ -62,7 +61,8 @@ espflash monitor -p COM4          # serial console (Ctrl+R reset, Ctrl+C quit)
 4. Watch → Settings → Server: helper URL/token, ntfy URL/token, Navidrome; Settings →
    Connections → Home Wi-Fi.
 5. Watch → Connections → AirPods → Search (AirPods in pairing mode) → select.
-6. Optional: web setup page in Bluefy (iPhone) or Chrome ([docs/web-config.md](docs/web-config.md)).
+6. Optional: edit the companion's settings from a browser: Watch → Settings → Web configuration
+   ([docs/web-config.md](docs/web-config.md)).
 
 Then follow [docs/hardware-test-checklist.md](docs/hardware-test-checklist.md).
 

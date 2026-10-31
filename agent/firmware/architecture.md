@@ -5,7 +5,7 @@ code lives so later sessions can continue quickly.
 
 ## Decisions
 - Repo layout adapted to existing `firmware/{watch,companion}` placeholders instead of top-level `watch/`, `companion/`.
-- BLE hosts: watch NimBLE (central + optional peripheral); companion Bluedroid (needed for Classic A2DP; NimBLE cannot coexist with Bluedroid Classic).
+- BLE hosts: watch NimBLE (central only); companion Bluedroid (needed for Classic A2DP; NimBLE cannot coexist with Bluedroid Classic).
 - Pairing: companion DisplayOnly static passkey, TODO(PROTOTYPE) fixed 616616 via CONFIG_COMPANION_PROTOTYPE_PASSKEY + pairing window; watch KeyboardDisplay. Links without SC+MITM are dropped on both sides.
 - SWP framing over a byte stream; transport chunks to MTU-3; field visitor (`fields(A&)`) gives symmetric encode/decode.
 - Watch UI thread model: producers update `app::State` + dirty bits; LVGL timer (100 ms) dispatches to the visible `ui::Screen::refresh`.
@@ -19,4 +19,4 @@ code lives so later sessions can continue quickly.
 - Watch: firmware/watch/main/{app,ble,ui,ui/screens}; components/board (HAL), components/watch_core (pure logic).
 - Companion: firmware/companion/main/{config,storage,net,lte,ble_server,dispatch,cloud,http,position}.cpp, main/music/{library,navidrome,a2dp,player}.cpp; components/companion_core (pure logic).
 - Server: server/src/{app,config,weather,tiles,places,routing,mapdata,geo}.rs
-- Web: web/src/{ble.ts,main.ts,protocol/*}
+- Companion LAN settings page: firmware/companion/main/web_config.cpp
