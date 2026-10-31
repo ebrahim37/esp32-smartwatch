@@ -21,6 +21,7 @@
 #include "nvs_flash.h"
 #include "position.hpp"
 #include "storage.hpp"
+#include "web_config.hpp"
 
 static const char* TAG = "main";
 
@@ -51,6 +52,7 @@ extern "C" void app_main(void) {
     music::navidrome::start();
     cloud::start();
     ntfy::start();
+    web_config::start();
 
     ESP_LOGI(TAG, "boot complete: internal free %u KB, PSRAM free %u KB", (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
              (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024));

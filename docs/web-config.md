@@ -39,3 +39,11 @@ Known/assumed Bluefy limitations and how the app copes (not yet verified on a de
 | Reports of anecdotal disconnect-after-pairing issues | toggle iOS Bluetooth, unpair, retry |
 
 Sources: Bluefy App Store listing; third-party compatibility notes. Re-test after Bluefy updates.
+
+## LAN page (no app needed)
+
+While the companion's pairing window is open (5 min after boot, 2 min after pressing BOOT)
+it also serves a settings page at `http://<companion-ip>/` (the address is in its serial log
+and your router's client list). It's the same key list with the same validation, and secrets
+are write-only (leave empty to keep). The page is plain HTTP, so use it only on a trusted
+network; the server stops when the window closes, and cross-site form posts are refused.
