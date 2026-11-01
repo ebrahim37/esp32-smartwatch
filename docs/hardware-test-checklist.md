@@ -28,9 +28,10 @@ through it in order and note the results in `agent/firmware/progress.md`.
 - [ ] Settings → Vibration toggle buzzes the motor (GPIO18).
 
 ## 3. Pairing and reconnection
-- [ ] Within 5 min of companion boot: Watch Settings → Connections → Companion → Find & pair → select → keyboard asks for passkey → enter `616616` → Status `Connected`.
+- [ ] Companion unpaired (or within 5 min of boot): Watch Settings → Connections → Companion → Find & pair → select → keyboard asks for passkey → enter `616616` → Status `Connected`.
 - [ ] Wrong passkey fails; no bond stored.
-- [ ] After pairing window expired, a new phone cannot pair (`pairing rejected: window closed`); press BOOT → pairing possible for 2 min.
+- [ ] Once paired and 5 min after boot, another device cannot pair (`pairing rejected: already paired`).
+- [ ] Watch Forget → companion logs `unpaired on request of the watch`; pairing works again without a reboot.
 - [ ] Reboot watch: reconnects automatically without passkey.
 - [ ] Reboot companion: watch shows `Waiting to reconnect`, reconnects within ~1 min.
 - [ ] Walk out of range for 5 min, come back: reconnects (backoff ≤ 5 min).
@@ -42,7 +43,13 @@ through it in order and note the results in `agent/firmware/progress.md`.
 - [ ] Notifications: `curl -H "Authorization: Bearer <ntfy publish token>" -d test https://<ntfy>/<topic>` → watch banner + vibration within a few seconds; appears once even after a companion reboot (dedup); Dismiss/Clear work; ntfy toggle off → no banner.
 - [ ] Publish to an ntfy topic → arrives on the watch.
 - [ ] Maps: tiles load around the dummy location, `+`/`−`, drag to pan, recenter; `HDG … REL` cone rotates with the wrist; Search shows nearby places; pick → Walk → route line + banner; End clears.
-- [ ] Turn the companion's Wi-Fi off: previously viewed tiles still load (SD cache).
+- [ ] Companion log: `cloud: z/x/y net … ms: … B, ble … ms` per tile; a screen of tiles fills within a few seconds.
+- [ ] A minute after boot (Wi-Fi up, no music, Maps closed): `prefetch: … KB …, N new tiles stored`; Settings → About shows maps MB growing.
+- [ ] Search "coffee", "gas", a shop name: results within a second, nearest first. Route to a place 100+ km away: line drawn, banner shows distance.
+- [ ] Pan Maps fast for a minute: no frozen bands; if the companion logs nothing but the watch logs `display flush not completed`, report it.
+- [ ] Turn the companion's Wi-Fi off: previously viewed and prefetched tiles still load (SD cache).
+
+- [ ] HTTPS proxy: a `fetch::request` to an https URL returns status and body (inline ≤3 KB and a larger one via transfer); an `http://` URL returns status 0.
 
 ## 5. Music / AirPods (unverified on AirPods — TODO(HARDWARE))
 - [ ] Companion log lists `available playlist: id=…` if `nd_playlist` is unset; set it on the watch or the LAN settings page.

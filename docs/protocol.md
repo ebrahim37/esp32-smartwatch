@@ -47,15 +47,18 @@ within a major version; decoders ignore unknown trailing bytes.
 | 0x28/0x29 | WeatherRequest / Weather | | current, low/high, wind, UV, precip ETA, 7 days, 24 h |
 | 0x30 | MapTileRequest | W→C | z/x/y + resume offset; answered by a transfer |
 | 0x31/0x32 | MapSearchRequest / Results | | empty query = nearby POIs |
-| 0x33/0x34 | RouteRequest / Route | | ≤256 points, ≤32 steps |
+| 0x33/0x34 | RouteRequest / Route | | ≤1000 points, ≤100 steps; large routes go as a transfer |
 | 0x38–0x3B | TransferBegin/Chunk/Ack/Abort | | chunked bulk transfer, below |
 | 0x40/0x41 | Notification / NotificationAck | C→W / W→C | at-least-once, dedup by id |
 | 0x50–0x55 | Playlists, tracks (paged), PlaybackCommand, PlaybackStatus | | |
 | 0x60–0x62 | WifiConfigSet / WifiStatusRequest / WifiStatus | | password write-only |
 | 0x68–0x6D | AudioScanStart / Devices / Connect / Disconnect / Forget / Status | | A2DP sink management |
 | 0x70–0x72 | ConfigSet / ConfigGet / ConfigValue | | whitelisted keys, secrets write-only |
+| 0x73/0x74 | WebConfigCommand / WebConfigStatus | W→C / C→W | LAN settings page, below |
+| 0x75 | Unpair | W→C | companion removes all BLE bonds |
 | 0x78/0x79/0x7A | StatusRequest / CompanionStatus / DeviceInfo | | |
-| 0x7B/0x7C | WatchSettings / WatchSettingsRequest | web ↔ watch | |
+| 0x7B | WatchSettings | | watch settings storage format |
+| 0x80/0x81 | HttpRequest / HttpResponse | W→C / C→W | HTTPS proxy, below |
 
 ## Bulk transfers
 
@@ -65,16 +68,36 @@ the acknowledged offset (credit-based backpressure). The receiver accepts only t
 `next_offset` (go-back-N): a gap produces `status=Rewind`. Completion is acknowledged only
 after the CRC-32 matches (`status=Done`). An interrupted transfer is resumed by requesting
 the object again with `resume_offset`; the receiver keeps its prefix if size, CRC and meta
-match. Map tiles use `kind=MapTile`, `meta = z(u8) x(u32) y(u32)`.
+match. Map tiles use `kind=MapTile`, `meta = z(u8) x(u32) y(u32)`; proxied HTTP bodies use
+`kind=HttpBody`, `meta = id(u16)`; a `Route` too large for one frame (long trips: up to 1000
+points, 100 steps) is sent as `kind=Route` whose data is the message payload.
+
+## HTTPS proxy
+
+The watch has no IP connectivity; its link peer (the companion, later a phone) performs
+requests for it. On the watch: `fetch::request({.url = "https://…", .headers = {…}}, cb)`
+(`firmware/watch/main/ble/fetch.hpp`).
+
+* `HttpRequest{id, method, url ≤1024, headers ≤16 (value ≤1024), body ≤2 KB, max_response}`.
+* The peer refuses non-`https://` URLs, verifies certificates (Mozilla CA bundle), follows
+  up to 3 redirects and caps responses at `min(max_response, 128 KB)`.
+* `HttpResponse{id, status, error, body_size, body}`: `status = 0` means the request was not
+  performed (offline, busy, TLS/transport error, too large). Bodies ≤3 KB are inline; larger
+  ones follow as a `HttpBody` transfer.
+* Headers (including `Authorization`) come from the watch, so any credential a widget uses
+  is stored on the watch and visible to the peer. The watch times a request out after 30 s
+  by default; the companion runs requests one at a time on its cloud worker.
 
 ## Pairing and trust
 
 * Companion: display-only static passkey. TODO(PROTOTYPE): fixed to `616616`
-  (`CONFIG_COMPANION_PROTOTYPE_PASSKEY`), so anyone nearby during the pairing window can
-  bond; production must use a per-device random passkey. New bonds are only accepted
-  during the pairing window (5 min after boot, or 2 min after pressing BOOT).
+  (`CONFIG_COMPANION_PROTOTYPE_PASSKEY`), so anyone nearby while pairing is open can
+  bond; production must use a per-device random passkey. New bonds are accepted whenever
+  the companion has no bond, and for 5 min after boot. Forget on the watch sends `Unpair`
+  first, so the companion becomes pairable again; the same watch re-pairing (same address)
+  is always accepted. TODO(PROTOTYPE): a lost watch currently needs a companion reboot.
 * The companion rejects links that are not LE Secure Connections + MITM (for the prototype
-  the passkey is public, so the pairing window is the only gate).
+  the passkey is public, so "already paired" is the only gate).
 * LAN settings page: `WebConfigCommand` (watch → companion, seconds; 0 closes) opens
   `http://<companion-ip>/` for at most 10 min; the companion reports `WebConfigStatus`
   (open, remaining seconds, URL) whenever it changes. See docs/web-config.md.

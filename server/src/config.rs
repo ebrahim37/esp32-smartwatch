@@ -16,6 +16,10 @@ pub struct Config {
     /// provider whose terms allow caching). Empty disables tiles.
     pub tile_url_template: String,
     pub tile_recolor: TileRecolor,
+    /// 2 (default): each watch tile is a quarter of the zoom-1 tile rendered at 2x pixel
+    /// density, so labels and roads are twice the size on the watch's dense screen.
+    /// `{r}` in the template becomes `@2x` (otherwise it is inserted before the extension).
+    pub tile_scale: u8,
     pub tile_cache_max_bytes: u64,
     pub tile_attribution: String,
     pub photon_url: String,
@@ -24,6 +28,10 @@ pub struct Config {
     pub osrm_url: String,
     /// Per-profile overrides (OSRM_URL_FOOT / _BICYCLE / _DRIVING), for one osrm-routed per profile.
     pub osrm_profile_urls: [String; 3],
+    /// Public OSRM servers used for routes the local map area cannot answer (destination
+    /// outside it, or the area still building). Defaults to FOSSGIS (routing.openstreetmap.de:
+    /// light use, at most 1 request/s, attribution); `ROUTE_FALLBACK=off` disables.
+    pub route_fallback_urls: [String; 3],
     /// On-demand map data (see mapdata.rs); None when MAPCACHE_DIR is unset.
     pub mapdata: Option<crate::mapdata::MapDataConfig>,
     pub user_agent: String,
@@ -88,6 +96,7 @@ impl Config {
                 Some("none") => TileRecolor::None,
                 _ => TileRecolor::DarkHeuristic,
             },
+            tile_scale: if var("TILE_SCALE").as_deref() == Some("1") { 1 } else { 2 },
             tile_cache_max_bytes: var("TILE_CACHE_MAX_MB").and_then(|v| v.parse::<u64>().ok()).unwrap_or(2048) * 1024 * 1024,
             tile_attribution: var("TILE_ATTRIBUTION").unwrap_or_else(|| "© OpenStreetMap contributors".into()),
             photon_url: https_or_empty("PHOTON_URL", var("PHOTON_URL").unwrap_or_else(|| "https://photon.komoot.io".into()))?,
@@ -101,6 +110,24 @@ impl Config {
                 https_or_empty("OSRM_URL_BICYCLE", var("OSRM_URL_BICYCLE").unwrap_or_default())?,
                 https_or_empty("OSRM_URL_DRIVING", var("OSRM_URL_DRIVING").unwrap_or_default())?,
             ],
+            route_fallback_urls: if var("ROUTE_FALLBACK").as_deref() == Some("off") {
+                Default::default()
+            } else {
+                [
+                    https_or_empty(
+                        "ROUTE_FALLBACK_URL_FOOT",
+                        var("ROUTE_FALLBACK_URL_FOOT").unwrap_or_else(|| "https://routing.openstreetmap.de/routed-foot".into()),
+                    )?,
+                    https_or_empty(
+                        "ROUTE_FALLBACK_URL_BICYCLE",
+                        var("ROUTE_FALLBACK_URL_BICYCLE").unwrap_or_else(|| "https://routing.openstreetmap.de/routed-bike".into()),
+                    )?,
+                    https_or_empty(
+                        "ROUTE_FALLBACK_URL_DRIVING",
+                        var("ROUTE_FALLBACK_URL_DRIVING").unwrap_or_else(|| "https://routing.openstreetmap.de/routed-car".into()),
+                    )?,
+                ]
+            },
             mapdata: var("MAPCACHE_DIR").map(|dir| crate::mapdata::MapDataConfig {
                 dir: dir.into(),
                 max_bytes: var("MAPCACHE_MAX_GB").and_then(|v| v.parse::<u64>().ok()).unwrap_or(10) * 1024 * 1024 * 1024,
@@ -124,12 +151,14 @@ impl Config {
             weather_ttl: Duration::from_secs(900),
             tile_url_template: String::new(),
             tile_recolor: TileRecolor::DarkHeuristic,
+            tile_scale: 2,
             tile_cache_max_bytes: 64 * 1024 * 1024,
             tile_attribution: "© OpenStreetMap contributors".into(),
             photon_url: String::new(),
             overpass_url: String::new(),
             osrm_url: String::new(),
             osrm_profile_urls: Default::default(),
+            route_fallback_urls: Default::default(),
             mapdata: None,
             user_agent: "sw-helper-test".into(),
         }

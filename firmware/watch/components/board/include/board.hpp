@@ -47,6 +47,8 @@ int display_height();
 // LVGL is not thread-safe: hold this lock for any LVGL call outside the LVGL task.
 bool lvgl_lock(uint32_t timeout_ms = 0);
 void lvgl_unlock();
+// True once after the flush watchdog forced a stuck display flush (redraw everything).
+bool take_display_recovered();
 void set_brightness(int percent);
 
 // Reads all IMU axes. Returns false if the IMU is unavailable or the read failed.

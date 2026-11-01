@@ -17,8 +17,9 @@
 //! eviction (the area namespace keeps tiles from an older map build from being served).
 
 use std::{
+    collections::VecDeque,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 use image::{GenericImageView, Rgba};
@@ -121,10 +122,16 @@ pub fn encode_swt(packed: &[u8]) -> Vec<u8> {
 }
 
 /// Decodes any supported raster, maps every pixel to the palette and encodes an SWT tile.
-pub fn convert(src: &[u8], mode: TileRecolor) -> anyhow::Result<Vec<u8>> {
-    let img = image::load_from_memory(src)?;
+/// `quadrant` (0..4, row-major) selects a quarter of a 2x-density parent tile.
+pub fn convert(src: &[u8], mode: TileRecolor, quadrant: Option<u8>) -> anyhow::Result<Vec<u8>> {
+    let mut img = image::load_from_memory(src)?;
     let (w, h) = img.dimensions();
-    anyhow::ensure!(w <= 512 && h <= 512, "tile too large");
+    anyhow::ensure!(w <= 1024 && h <= 1024, "tile too large");
+    if let Some(q) = quadrant {
+        let (hw, hh) = (w / 2, h / 2);
+        img = img.crop_imm(u32::from(q & 1) * hw, u32::from(q >> 1) * hh, hw, hh);
+    }
+    let (w, h) = img.dimensions();
     let img = if w != 256 || h != 256 { img.resize_exact(256, 256, image::imageops::FilterType::Triangle) } else { img };
     let rgba = img.to_rgba8();
     let mut packed = Vec::with_capacity(256 * 128);
@@ -145,18 +152,71 @@ pub struct TileService {
     http: reqwest::Client,
     template: String,
     mode: TileRecolor,
+    scale: u8,
     dir: PathBuf,
     max_bytes: u64,
     upstream_limit: Arc<Semaphore>,
+    /// Recently fetched 2x parent renders: one serves four neighbouring watch tiles.
+    parents: Arc<Mutex<VecDeque<(TileKey, bytes::Bytes)>>>,
+}
+
+type TileKey = (u8, u32, u32);
+
+/// `{r}` -> `@2x` (or inserted before the file extension) for 2x-density renders.
+pub fn upstream_url(template: &str, z: u8, x: u32, y: u32, scale: u8) -> String {
+    let r = if scale == 2 { "@2x" } else { "" };
+    let mut t = template.to_string();
+    if t.contains("{r}") {
+        t = t.replace("{r}", r);
+    } else if scale == 2 {
+        let tail = t.rfind('/').unwrap_or(0);
+        match t[tail..].rfind('.') {
+            Some(dot) => t.insert_str(tail + dot, r),
+            None => t.push_str(r),
+        }
+    }
+    t.replace("{z}", &z.to_string()).replace("{x}", &x.to_string()).replace("{y}", &y.to_string())
 }
 
 impl TileService {
-    pub fn new(http: reqwest::Client, template: String, mode: TileRecolor, data_dir: &Path, max_bytes: u64) -> Self {
-        Self { http, template, mode, dir: data_dir.join("tiles"), max_bytes, upstream_limit: Arc::new(Semaphore::new(4)) }
+    pub fn new(http: reqwest::Client, template: String, mode: TileRecolor, scale: u8, data_dir: &Path, max_bytes: u64) -> Self {
+        Self {
+            http,
+            template,
+            mode,
+            scale,
+            dir: data_dir.join("tiles"),
+            max_bytes,
+            upstream_limit: Arc::new(Semaphore::new(4)),
+            parents: Default::default(),
+        }
     }
 
     fn path(&self, ns: &str, z: u8, x: u32, y: u32) -> PathBuf {
+        let ns = if self.scale == 2 { format!("{ns}@2x") } else { ns.to_string() };
         self.dir.join(ns).join(z.to_string()).join(x.to_string()).join(format!("{y}.swt"))
+    }
+
+    async fn fetch(&self, z: u8, x: u32, y: u32, scale: u8) -> AppResult<bytes::Bytes> {
+        let key = (z, x, y);
+        if scale == 2 {
+            if let Some((_, b)) = self.parents.lock().unwrap().iter().find(|(k, _)| *k == key) {
+                return Ok(b.clone());
+            }
+        }
+        // Bounded concurrency: be polite to the upstream tile server.
+        let _permit = self.upstream_limit.acquire().await.map_err(|e| AppError::Internal(e.into()))?;
+        let resp = self.http.get(upstream_url(&self.template, z, x, y, scale)).send().await?.error_for_status()?;
+        let src = resp.bytes().await?;
+        if src.len() > 4 * 1024 * 1024 {
+            return Err(AppError::Upstream("tile too large".into()));
+        }
+        if scale == 2 {
+            let mut p = self.parents.lock().unwrap();
+            p.push_front((key, src.clone()));
+            p.truncate(64);
+        }
+        Ok(src)
     }
 
     /// `ns` namespaces the disk cache (the map area id when map data is built on demand).
@@ -171,16 +231,13 @@ impl TileService {
         if self.template.is_empty() {
             return Err(AppError::NotConfigured("TILE_URL_TEMPLATE"));
         }
-        // Bounded concurrency: be polite to the upstream tile server.
-        let _permit = self.upstream_limit.acquire().await.map_err(|e| AppError::Internal(e.into()))?;
-        let url = self.template.replace("{z}", &z.to_string()).replace("{x}", &x.to_string()).replace("{y}", &y.to_string());
-        let resp = self.http.get(url).send().await?.error_for_status()?;
-        let src = resp.bytes().await?;
-        if src.len() > 2 * 1024 * 1024 {
-            return Err(AppError::Upstream("tile too large".into()));
-        }
+        let (src, quadrant) = if self.scale == 2 && z > 0 {
+            (self.fetch(z - 1, x / 2, y / 2, 2).await?, Some(((y & 1) << 1 | (x & 1)) as u8))
+        } else {
+            (self.fetch(z, x, y, 1).await?, None)
+        };
         let mode = self.mode;
-        let out = tokio::task::spawn_blocking(move || convert(&src, mode))
+        let out = tokio::task::spawn_blocking(move || convert(&src, mode, quadrant))
             .await
             .map_err(|e| AppError::Internal(e.into()))?
             .map_err(|e| AppError::Upstream(format!("tile decode: {e}")))?;
@@ -254,7 +311,7 @@ mod tests {
         }
         let mut src = Vec::new();
         image::DynamicImage::ImageRgba8(img).write_to(&mut Cursor::new(&mut src), image::ImageFormat::Png).unwrap();
-        let out = convert(&src, TileRecolor::DarkHeuristic).unwrap();
+        let out = convert(&src, TileRecolor::DarkHeuristic, None).unwrap();
         assert_eq!(&out[..4], SWT_MAGIC);
         assert_eq!(&out[4..10], &[0, 1, 0, 1, 1, 16]);
         assert!(out.len() < src.len());
@@ -264,4 +321,31 @@ mod tests {
         assert_eq!(pixels[0] >> 4, 1);
         assert_eq!(pixels[16] >> 4, 10);
     }
+
+    #[test]
+    fn upstream_url_scales() {
+        let t = "http://h/styles/basic-preview/{z}/{x}/{y}.png";
+        assert_eq!(upstream_url(t, 14, 1, 2, 2), "http://h/styles/basic-preview/14/1/2@2x.png");
+        assert_eq!(upstream_url(t, 14, 1, 2, 1), "http://h/styles/basic-preview/14/1/2.png");
+        assert_eq!(upstream_url("https://t/{z}/{x}/{y}{r}.webp", 3, 4, 5, 2), "https://t/3/4/5@2x.webp");
+    }
+
+    #[test]
+    fn crops_quadrant_of_2x_parent() {
+        let mut img = image::RgbaImage::from_pixel(512, 512, Rgba([255, 255, 255, 255]));
+        for y in 256..512 {
+            for x in 256..512 {
+                img.put_pixel(x, y, Rgba([170, 211, 223, 255])); // water, bottom-right quadrant only
+            }
+        }
+        let mut png = Vec::new();
+        img.write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+        let px = |q| {
+            let out = convert(&png, TileRecolor::DarkHeuristic, Some(q)).unwrap();
+            miniz_oxide::inflate::decompress_to_vec_zlib(&out[SWT_HEADER_LEN..]).unwrap()[0] >> 4
+        };
+        assert_ne!(px(3), px(0));
+        assert_eq!(px(1), px(0));
+    }
+
 }

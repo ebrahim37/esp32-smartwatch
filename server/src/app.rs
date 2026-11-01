@@ -6,7 +6,7 @@
 //! | GET    | /v1/status                        | bearer | component status                     |
 //! | GET    | /v1/weather?lat&lon               | bearer | summarised Open-Meteo forecast       |
 //! | GET    | /v1/maps/tile/{z}/{x}/{y}.swt     | bearer | dark 16-colour 256 px SWT tile       |
-//! | GET    | /v1/maps/bundle?lat&lon&radius_m&zmin&zmax | bearer | many SWT tiles in one stream (offline sync) |
+//! | GET    | /v1/maps/bundle?lat&lon&radius_m&zmin&zmax | bearer | many SWT tiles in one stream (companion background prefetch) |
 //! | GET    | /v1/maps/data                     | bearer | on-demand map area status            |
 //! | POST   | /v1/maps/data/update `{lat,lon}`  | bearer | re-download + rebuild that area      |
 //! | POST   | /v1/maps/data/delete              | bearer | delete all downloaded/built map data |
@@ -47,6 +47,8 @@ pub struct AppState {
     pub mapdata: Option<MapData>,
     pub places: Arc<dyn PoiSearch>,
     pub router: Arc<dyn RouteProvider>,
+    /// Routes the local map area cannot answer (see Config::route_fallback_urls).
+    pub fallback_router: Option<Arc<dyn RouteProvider>>,
 }
 
 impl AppState {
@@ -59,14 +61,18 @@ impl AppState {
             .build()?;
         Ok(Self {
             weather: WeatherService::new(http.clone(), cfg.open_meteo_url.clone(), cfg.weather_ttl),
-            tiles: TileService::new(http.clone(), cfg.tile_url_template.clone(), cfg.tile_recolor, &cfg.data_dir, cfg.tile_cache_max_bytes),
+            tiles: TileService::new(http.clone(), cfg.tile_url_template.clone(), cfg.tile_recolor, cfg.tile_scale, &cfg.data_dir, cfg.tile_cache_max_bytes),
             mapdata: cfg.mapdata.clone().map(|m| {
                 // Extract downloads can take a while; the shared client's 20 s timeout is per request.
                 let dl = reqwest::Client::builder().user_agent(cfg.user_agent.clone()).connect_timeout(Duration::from_secs(20)).build();
                 MapData::new(m, dl.unwrap_or_else(|_| http.clone()))
             }),
             places: Arc::new(OsmSearch { http: http.clone(), photon_url: cfg.photon_url.clone(), overpass_url: cfg.overpass_url.clone() }),
-            router: Arc::new(Osrm { http, base: cfg.osrm_url.clone(), per_profile: cfg.osrm_profile_urls.clone() }),
+            fallback_router: {
+                let o = Osrm::new(http.clone(), String::new(), cfg.route_fallback_urls.clone(), Some(Duration::from_secs(1)));
+                o.configured().then(|| Arc::new(o) as Arc<dyn RouteProvider>)
+            },
+            router: Arc::new(Osrm::new(http, cfg.osrm_url.clone(), cfg.osrm_profile_urls.clone(), None)),
             cfg: Arc::new(cfg),
         })
     }
@@ -195,7 +201,8 @@ async fn bundle(State(st): State<AppState>, Query(q): Query<BundleQ>) -> AppResu
         return Err(AppError::BadRequest(format!("{} tiles requested; reduce radius or zmax", list.len())));
     }
     let tiles = st.tiles.clone();
-    let records = futures_util::stream::iter(list).then(move |(z, x, y)| {
+    // Uncached tiles cost a render each; a few in parallel (order kept) on a multi-core host.
+    let records = futures_util::stream::iter(list).map(move |(z, x, y)| {
         let (tiles, ns) = (tiles.clone(), ns.clone());
         async move {
             let Ok(swt) = tiles.get(&ns, z, x, y).await else { return Ok::<_, std::io::Error>(bytes::Bytes::new()) };
@@ -207,7 +214,8 @@ async fn bundle(State(st): State<AppState>, Query(q): Query<BundleQ>) -> AppResu
             rec.extend_from_slice(&swt);
             Ok(bytes::Bytes::from(rec))
         }
-    });
+    })
+    .buffered(4);
     let head = futures_util::stream::iter([Ok(bytes::Bytes::from_static(b"SWB1"))]);
     let tail = futures_util::stream::iter([Ok(bytes::Bytes::from_static(&[0xFF]))]);
     let body = axum::body::Body::from_stream(head.chain(records).chain(tail));
@@ -249,7 +257,24 @@ async fn search(State(st): State<AppState>, Query(q): Query<SearchQ>) -> AppResu
     if q.q.len() > 100 {
         return Err(AppError::BadRequest("query too long".into()));
     }
-    let places = st.places.search(&q.q, q.lat, q.lon, q.limit).await?;
+    let limit = q.limit.clamp(1, 20);
+    // The active area's local index answers in milliseconds; Photon/Overpass cover the rest.
+    let local = st.mapdata.as_ref().filter(|md| md.covers(q.lat, q.lon)).and_then(|md| md.pois());
+    let mut places = local.map(|idx| idx.search(&q.q, q.lat, q.lon, limit)).unwrap_or_default();
+    if places.len() < 3 && (!q.q.trim().is_empty() || places.is_empty()) {
+        if let Ok(more) = st.places.search(&q.q, q.lat, q.lon, limit).await {
+            for p in more {
+                if places.len() >= limit {
+                    break;
+                }
+                if !places.iter().any(|e| e.name == p.name && e.distance_m.abs_diff(p.distance_m) < 200) {
+                    places.push(p);
+                }
+            }
+        } else if places.is_empty() {
+            return Err(AppError::Upstream("search failed".into()));
+        }
+    }
     Ok(Json(json!({ "places": places, "attribution": "© OpenStreetMap contributors" })))
 }
 
@@ -274,16 +299,26 @@ struct RouteQ {
 async fn route(State(st): State<AppState>, Query(q): Query<RouteQ>) -> AppResult<impl IntoResponse> {
     let mode = Mode::parse(q.mode.as_deref().unwrap_or("walk")).ok_or_else(|| AppError::BadRequest("mode".into()))?;
     let (from, to) = (parse_point(&q.from)?, parse_point(&q.to)?);
-    if let Some(md) = &st.mapdata {
-        if md.ensure(from.0, from.1) == Coverage::Preparing {
-            return Err(AppError::Preparing);
-        }
-        if !md.covers(to.0, to.1) {
-            return Err(AppError::BadRequest("destination is outside the current map area".into()));
+    // The local graphs cover ~MAP_AREA_KM around the user; longer trips (or an area still
+    // building) go to the fallback servers.
+    let local = match &st.mapdata {
+        Some(md) => match md.ensure(from.0, from.1) {
+            Coverage::Preparing => Err(AppError::Preparing),
+            _ if !md.covers(to.0, to.1) => Err(AppError::BadRequest("destination is outside the current map area".into())),
+            _ => Ok(()),
+        },
+        None => Ok(()),
+    };
+    if local.is_ok() {
+        let r = st.router.route(from, to, mode).await?;
+        if r.status == "ok" || st.fallback_router.is_none() {
+            return Ok(Json(r));
         }
     }
-    let r = st.router.route(from, to, mode).await?;
-    Ok(Json(r))
+    match &st.fallback_router {
+        Some(fb) => Ok(Json(fb.route(from, to, mode).await?)),
+        None => Err(local.err().unwrap_or(AppError::Upstream("no route".into()))),
+    }
 }
 
 async fn status(State(st): State<AppState>) -> AppResult<impl IntoResponse> {
@@ -293,6 +328,8 @@ async fn status(State(st): State<AppState>) -> AppResult<impl IntoResponse> {
         "tiles": !st.cfg.tile_url_template.is_empty(),
         "routing": !st.cfg.osrm_url.is_empty() || st.cfg.osrm_profile_urls.iter().any(|u| !u.is_empty()),
         "search": !st.cfg.photon_url.is_empty(),
+        // Names the companion's SD tile cache: tiles of another style must not be mixed in.
+        "tile_style": if st.cfg.tile_scale == 2 { "2x" } else { "1x" },
         "map_data": st.mapdata.as_ref().map(|m| m.status()),
     })))
 }

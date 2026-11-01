@@ -9,6 +9,7 @@
 #include "app/services.hpp"
 #include "app/state.hpp"
 #include "app/tiles.hpp"
+#include "ble/central.hpp"
 #include "ble/link.hpp"
 #include "core/map_math.hpp"
 #include "esp_heap_caps.h"
@@ -21,7 +22,7 @@ namespace {
 
 constexpr int kW = 410, kH = 502;
 constexpr int kGridCols = 3, kGridRows = 4;
-constexpr int kMaxRoutePts = 200;
+constexpr int kMaxRoutePts = 600;  // drawn vertices (the visible stretch of the route)
 
 struct TileSlot {
     tiles::Key key{};
@@ -48,6 +49,7 @@ public:
     uint32_t tick_ms() const override { return 300; }
 
     ~MapScreen() override {
+        central::set_fast(false);
         for (auto& s : slots_) {
             release_slot(s);
             heap_caps_free(s.px);
@@ -55,6 +57,7 @@ public:
     }
 
     void build(lv_obj_t* c) override {
+        central::set_fast(true);
         lv_obj_set_style_bg_color(c, lv_color_hex(0x101214), 0);
         layer_ = lv_obj_create(c);
         lv_obj_remove_style_all(layer_);
@@ -68,11 +71,13 @@ public:
             lv_obj_add_flag(s.img, LV_OBJ_FLAG_HIDDEN);
             lv_obj_remove_flag(s.img, LV_OBJ_FLAG_CLICKABLE);
         }
-        route_ = lv_line_create(layer_);
-        lv_obj_set_style_line_width(route_, 7, 0);
-        lv_obj_set_style_line_color(route_, color::blue(), 0);
-        lv_obj_set_style_line_rounded(route_, true, 0);
-        lv_obj_add_flag(route_, LV_OBJ_FLAG_HIDDEN);
+        for (auto& l : route_) {
+            l = lv_line_create(layer_);
+            lv_obj_set_style_line_width(l, 7, 0);
+            lv_obj_set_style_line_color(l, color::blue(), 0);
+            lv_obj_set_style_line_rounded(l, true, 0);
+            lv_obj_add_flag(l, LV_OBJ_FLAG_HIDDEN);
+        }
 
         // Heading cone (relative, gyro-based) + location dot.
         cone_ = lv_arc_create(layer_);
@@ -319,20 +324,67 @@ private:
 
     void update_route_points() {
         if (route_pts_.size() < 2) {
-            lv_obj_add_flag(route_, LV_OBJ_FLAG_HIDDEN);
+            for (auto l : route_) lv_obj_add_flag(l, LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(dest_, LV_OBJ_FLAG_HIDDEN);
             return;
         }
-        size_t n = std::min<size_t>(route_pts_.size(), kMaxRoutePts);
-        for (size_t i = 0; i < n; ++i) {
-            lv_point_t p = to_screen(route_pts_[i].lat_e7, route_pts_[i].lon_e7);
-            line_pts_[i].x = p.x;
-            line_pts_[i].y = p.y;
+        // Clip every segment to the screen plus a margin: a 100+ km route at street zoom would
+        // otherwise produce coordinates far off-screen and an enormous line object.
+        constexpr float kM = 64, x0 = -kM, y0 = -kM, x1 = kW + kM, y1 = kH + kM;
+        auto clip = [&](float& ax, float& ay, float& bx, float& by) {  // Liang-Barsky
+            float t0 = 0, t1 = 1, dx = bx - ax, dy = by - ay;
+            const float p[4] = {-dx, dx, -dy, dy}, q[4] = {ax - x0, x1 - ax, ay - y0, y1 - ay};
+            for (int i = 0; i < 4; ++i) {
+                if (p[i] == 0) {
+                    if (q[i] < 0) return false;
+                } else {
+                    float t = q[i] / p[i];
+                    if (p[i] < 0) t0 = std::max(t0, t);
+                    else t1 = std::min(t1, t);
+                }
+            }
+            if (t0 > t1) return false;
+            bx = ax + t1 * dx, by = ay + t1 * dy;
+            ax = ax + t0 * dx, ay = ay + t0 * dy;
+            return true;
+        };
+        // Each on-screen stretch of the route is its own line (lv_line has no gaps).
+        size_t n = 0, runs = 0, run_start = 0;
+        auto close_run = [&] {
+            if (n - run_start >= 2 && runs < kRouteRuns) {
+                lv_line_set_points(route_[runs], line_pts_ + run_start, static_cast<uint32_t>(n - run_start));
+                lv_obj_set_pos(route_[runs], 0, 0);
+                lv_obj_remove_flag(route_[runs], LV_OBJ_FLAG_HIDDEN);
+                ++runs;
+                run_start = n;
+            } else {
+                n = run_start;  // too short (or out of line objects): drop it
+            }
+        };
+        auto emit = [&](float x, float y) {
+            lv_point_precise_t p{static_cast<lv_value_precise_t>(std::lround(x)), static_cast<lv_value_precise_t>(std::lround(y))};
+            if (n > run_start && line_pts_[n - 1].x == p.x && line_pts_[n - 1].y == p.y) return;
+            if (n < static_cast<size_t>(kMaxRoutePts)) line_pts_[n++] = p;
+        };
+        lv_point_t prev = to_screen(route_pts_[0].lat_e7, route_pts_[0].lon_e7);
+        bool in_run = false;
+        for (size_t i = 1; i < route_pts_.size(); ++i) {
+            lv_point_t cur = to_screen(route_pts_[i].lat_e7, route_pts_[i].lon_e7);
+            float ax = prev.x, ay = prev.y, bx = cur.x, by = cur.y;
+            bool visible = clip(ax, ay, bx, by);
+            bool entered = ax != prev.x || ay != prev.y;  // segment started off-screen
+            if (in_run && (!visible || entered)) close_run();
+            if (visible) {
+                emit(ax, ay);
+                emit(bx, by);
+            }
+            in_run = visible && bx == cur.x && by == cur.y;  // still on screen at its end
+            if (visible && !in_run) close_run();
+            prev = cur;
         }
-        lv_line_set_points(route_, line_pts_, static_cast<uint32_t>(n));
-        lv_obj_set_pos(route_, 0, 0);
-        lv_obj_remove_flag(route_, LV_OBJ_FLAG_HIDDEN);
-        lv_point_t d = to_screen(route_pts_[n - 1].lat_e7, route_pts_[n - 1].lon_e7);
+        if (in_run) close_run();
+        for (size_t i = runs; i < kRouteRuns; ++i) lv_obj_add_flag(route_[i], LV_OBJ_FLAG_HIDDEN);
+        lv_point_t d = to_screen(route_pts_.back().lat_e7, route_pts_.back().lon_e7);
         lv_obj_set_pos(dest_, d.x - 11, d.y - 11);
         lv_obj_remove_flag(dest_, LV_OBJ_FLAG_HIDDEN);
         lv_obj_move_foreground(dot_);
@@ -340,7 +392,9 @@ private:
 
     void open_search();
 
-    lv_obj_t *layer_ = nullptr, *route_ = nullptr, *cone_ = nullptr, *dot_ = nullptr, *dest_ = nullptr;
+    static constexpr size_t kRouteRuns = 6;
+    lv_obj_t* route_[kRouteRuns] = {};
+    lv_obj_t *layer_ = nullptr, *cone_ = nullptr, *dot_ = nullptr, *dest_ = nullptr;
     lv_obj_t *status_ = nullptr, *banner_ = nullptr, *banner_lbl_ = nullptr;
     TileSlot slots_[kGridCols * kGridRows];
     core::WorldPx center_{0, 0};

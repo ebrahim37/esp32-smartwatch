@@ -80,13 +80,17 @@ public:
         if (!w.days.empty()) {
             section_header(c_, "Forecast");
             static const char* wd[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+            time_t now = time(nullptr);
+            struct tm today;
+            localtime_r(&now, &today);
             for (auto& d2 : w.days) {
-                time_t tt = d2.date;
+                time_t tt = d2.date;  // UTC midnight of the forecast's calendar day
                 struct tm lt;
-                localtime_r(&tt, &lt);
+                gmtime_r(&tt, &lt);
                 std::string sub = std::string(core::wmo_description(d2.wmo_code)) + "  " + std::to_string(d2.precip_prob) + "% precip.";
                 std::string val = core::fmt_temp(d2.low_c10) + "\xC2\xB0 / " + core::fmt_temp(d2.high_c10) + "\xC2\xB0";
-                list_row(c_, wd[lt.tm_wday % 7], sub.c_str(), val.c_str());
+                bool is_today = lt.tm_year == today.tm_year && lt.tm_yday == today.tm_yday;
+                list_row(c_, is_today ? "Today" : wd[lt.tm_wday % 7], sub.c_str(), val.c_str());
             }
         }
         if (w.updated_at) {
@@ -105,11 +109,28 @@ private:
 // ---- Timer -----------------------------------------------------------------------------
 
 class TimerScreen : public Screen {
+    // Rounding of the remaining time: 999 = round up, 500 = nearest, 0 = round down. Larger
+    // values change each digit later. Matched by eye against the iPhone timer.
+    static constexpr int64_t kRoundMs = 700;
+
 public:
     const char* title() const override { return "Timer"; }
     bool scrollable() const override { return false; }
-    uint32_t tick_ms() const override { return 200; }
+    uint32_t tick_ms() const override { return 100; }
+    ~TimerScreen() override {
+        if (digit_timer_) lv_timer_delete(digit_timer_);
+    }
     void build(lv_obj_t* c) override {
+        // One-shot timer that lands exactly on the next second change, so the digits do not
+        // trail the real countdown by up to a tick period.
+        digit_timer_ = lv_timer_create(
+            [](lv_timer_t* lt) {
+                lv_timer_pause(lt);
+                static_cast<TimerScreen*>(lv_timer_get_user_data(lt))->tick();
+                lv_refr_now(nullptr);
+            },
+            1000, this);
+        lv_timer_pause(digit_timer_);
         auto t = services::timer();
         if (t.state == services::TimerState::Idle && t.duration_s == 600) services::timer_set(600);  // opens at 10:00
         ring_ = lv_arc_create(c);
@@ -156,11 +177,18 @@ public:
     }
     void tick() override {
         auto t = services::timer();
-        int64_t sec = (t.remaining_ms + 999) / 1000;
+        int64_t sec = (t.remaining_ms + kRoundMs) / 1000;
         set_text(time_, core::fmt_duration(sec));
         lv_obj_align_to(time_, ring_, LV_ALIGN_CENTER, 0, 0);
         lv_arc_set_value(ring_, t.duration_s ? static_cast<int32_t>(1000 * t.remaining_ms / (t.duration_s * 1000LL)) : 0);
         bool running = t.state == services::TimerState::Running;
+        // The digits change when remaining_ms + kRoundMs crosses a whole second.
+        uint32_t to_change = static_cast<uint32_t>((t.remaining_ms + kRoundMs) % 1000);
+        if (running && to_change > 0 && to_change <= tick_ms()) {
+            lv_timer_set_period(digit_timer_, to_change + 1);
+            lv_timer_reset(digit_timer_);
+            lv_timer_resume(digit_timer_);
+        }
         set_text(lv_obj_get_child(start_, 0), running ? "Pause" : (t.state == services::TimerState::Paused ? "Resume" : "Start"));
         lv_obj_set_style_bg_color(start_, running ? color::card2() : color::orange(), 0);
         if (running) {
@@ -180,6 +208,7 @@ private:
         services::timer_set(static_cast<uint32_t>(d));
     }
     lv_obj_t *ring_ = nullptr, *time_ = nullptr, *start_ = nullptr, *reset_ = nullptr, *minus_ = nullptr, *plus_ = nullptr;
+    lv_timer_t* digit_timer_ = nullptr;
 };
 
 // ---- Stopwatch -------------------------------------------------------------------------

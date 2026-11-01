@@ -17,7 +17,7 @@ namespace tiles {
 namespace {
 
 constexpr size_t kMaxCached = 96;      // compressed SWT, a few KB each in PSRAM
-constexpr size_t kMaxInFlight = 2;
+constexpr size_t kMaxInFlight = 6;  // keeps the companion fetching ahead of the BLE transfer
 constexpr int64_t kRequestTimeoutUs = 20 * 1000000;
 
 struct Entry {

@@ -112,7 +112,7 @@ async fn tile_is_converted_and_cached() {
     let (s, b) = call(&app, "GET", "/v1/maps/tile/15/9155/11961.swt", true, None).await;
     assert_eq!(s, StatusCode::OK);
     assert_eq!(&b[..4], b"SWT1");
-    assert!(dir.path().join("tiles/default/15/9155/11961.swt").exists());
+    assert!(dir.path().join("tiles/default@2x/15/9155/11961.swt").exists());
     let (s, _) = call(&app, "GET", "/v1/maps/tile/3/99/0.swt", true, None).await;
     assert_eq!(s, StatusCode::BAD_REQUEST);
 }

@@ -23,5 +23,6 @@ void forget();
 void submit_passkey(uint32_t passkey);
 void cancel_passkey();
 void drop_link();    // transient drop (health check); auto-reconnect continues
+void set_fast(bool on);  // shorter connection interval for bulk transfers (Maps screen)
 
 }  // namespace central

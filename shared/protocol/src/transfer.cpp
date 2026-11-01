@@ -71,6 +71,7 @@ TransferAck TransferReceiver::make_ack(TransferAckStatus status) const {
 }
 
 TransferReceiver::Event TransferReceiver::on_begin(const TransferBegin& b, TransferAck& ack) {
+    kind_ = b.kind;  // valid for the caller even when this begin is rejected
     if (b.total_size > max_size_) {
         active_ = false;
         ack = TransferAck{};
@@ -85,7 +86,6 @@ TransferReceiver::Event TransferReceiver::on_begin(const TransferBegin& b, Trans
         next_ = 0;
     }
     id_ = b.id;
-    kind_ = b.kind;
     total_ = b.total_size;
     crc_ = b.crc32;
     meta_ = b.meta;

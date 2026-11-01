@@ -17,6 +17,7 @@ constexpr const char* kMount = "/sdcard";
 constexpr const char* kMusicDir = "/sdcard/music";
 constexpr const char* kMusicTmpDir = "/sdcard/music/.tmp";
 constexpr const char* kMapsDir = "/sdcard/maps";
+
 constexpr const char* kMemosDir = "/sdcard/memos";  // TODO(PROTOTYPE): voice memos deferred
 
 struct Info {
@@ -42,11 +43,16 @@ void music_set_used(uint64_t bytes);
 std::string tile_path(uint8_t z, uint32_t x, uint32_t y);
 // Reads a cached tile and marks it recently used. Returns false if absent.
 bool tile_read(uint8_t z, uint32_t x, uint32_t y, std::vector<uint8_t>& out);
+bool tile_exists(uint8_t z, uint32_t x, uint32_t y);
+// Tiles live under maps/<style>, the helper's `tile_style` (e.g. "2x"). Until it is known the
+// cache is unused; switching style deletes the other trees in the background.
+void set_tile_style(const std::string& style);
+std::string tiles_dir();  // empty until the style is known
 // Stores a tile atomically (temp file + rename), evicting least-recently-used blocks.
 bool tile_write(uint8_t z, uint32_t x, uint32_t y, const std::vector<uint8_t>& data);
 
 // Atomic file helpers.
-bool write_file_atomic(const std::string& path, const uint8_t* data, size_t len);
+bool write_file_atomic(const std::string& path, const uint8_t* data, size_t len, bool sync = true);
 bool read_file(const std::string& path, std::vector<uint8_t>& out, size_t max_len);
 uint64_t file_size(const std::string& path);  // 0 if missing
 void flush_index();  // persist the LRU index if dirty (called periodically)

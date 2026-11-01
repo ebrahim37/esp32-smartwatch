@@ -73,30 +73,47 @@ TEST(message_roundtrip_weather) {
     CHECK(!decode_message<Notification>(f).has_value());
 }
 
-TEST(message_roundtrip_map_sync_and_data) {
-    MapSyncRequest r;
-    r.lat_e7 = 437800833;
-    r.lon_e7 = -794118611;
-    r.radius_m = 5000;
-    r.zmax = 16;
-    std::vector<uint8_t> frame;
-    CHECK(encode_message(r, 1, frame));
-    FrameDecoder d;
-    d.feed(frame.data(), frame.size());
-    Frame f;
-    CHECK(d.next(f) == FrameDecoder::Result::Frame);
-    auto back = decode_message<MapSyncRequest>(f);
-    CHECK(back.has_value() && back->lon_e7 == -794118611 && back->radius_m == 5000 && back->zmin == 12 && back->zmax == 16);
-
+TEST(message_roundtrip_map_data) {
     MapDataStatus st;
     st.active = "+43.8_-79.4_100km";
     st.error = std::string(400, 'e');  // longer than the field allows: truncated, not rejected
-    frame.clear();
+    std::vector<uint8_t> frame;
+    FrameDecoder d;
+    Frame f;
     CHECK(encode_message(st, 2, frame));
     d.feed(frame.data(), frame.size());
     CHECK(d.next(f) == FrameDecoder::Result::Frame);
     auto s2 = decode_message<MapDataStatus>(f);
     CHECK(s2.has_value() && s2->active == st.active && s2->error.size() <= 300);
+}
+
+TEST(message_roundtrip_http_proxy) {
+    HttpRequest q;
+    q.id = 7;
+    q.method = static_cast<uint8_t>(HttpMethod::Post);
+    q.url = "https://widgets.example.com/discord";
+    q.headers = {{"Authorization", "Bearer abc"}, {"Content-Type", "application/json"}};
+    q.body = {'{', '}'};
+    std::vector<uint8_t> frame;
+    CHECK(encode_message(q, 1, frame));
+    FrameDecoder d;
+    d.feed(frame.data(), frame.size());
+    Frame f;
+    CHECK(d.next(f) == FrameDecoder::Result::Frame);
+    auto back = decode_message<HttpRequest>(f);
+    CHECK(back.has_value() && back->id == 7 && back->url == q.url && back->headers.size() == 2 &&
+          back->headers[0].value == "Bearer abc" && back->body == q.body && back->max_response == 16 * 1024);
+
+    HttpResponse r;
+    r.id = 7;
+    r.status = 200;
+    r.body_size = 50000;  // body follows as a transfer
+    frame.clear();
+    CHECK(encode_message(r, 2, frame));
+    d.feed(frame.data(), frame.size());
+    CHECK(d.next(f) == FrameDecoder::Result::Frame);
+    auto r2 = decode_message<HttpResponse>(f);
+    CHECK(r2.has_value() && r2->status == 200 && r2->body_size == 50000 && r2->body.empty());
 }
 
 TEST(decode_rejects_truncated_and_oversized_lists) {

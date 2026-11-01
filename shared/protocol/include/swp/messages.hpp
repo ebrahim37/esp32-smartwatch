@@ -51,8 +51,7 @@ enum class MsgType : uint8_t {
     MapSearchResults = 0x32,
     RouteRequest = 0x33,
     Route = 0x34,
-    MapSyncRequest = 0x35,
-    MapSyncStatus = 0x36,
+    // 0x35/0x36 retired (manual offline map download)
     MapDataCommand = 0x3C,
     MapDataStatus = 0x3D,
 
@@ -87,11 +86,15 @@ enum class MsgType : uint8_t {
     ConfigValue = 0x72,
     WebConfigCommand = 0x73,
     WebConfigStatus = 0x74,
+    Unpair = 0x75,
 
     StatusRequest = 0x78,
     CompanionStatus = 0x79,
     DeviceInfo = 0x7A,
     WatchSettings = 0x7B,
+
+    HttpRequest = 0x80,
+    HttpResponse = 0x81,
 };
 
 const char* msg_type_name(MsgType t);
@@ -107,6 +110,7 @@ enum Capability : uint32_t {
     kCapAudioDevices = 1u << 7,
     kCapConfig = 1u << 8,
     kCapTransfer = 1u << 9,
+    kCapHttpProxy = 1u << 10,
 };
 
 enum class Role : uint8_t { Watch = 1, Companion = 2, Phone = 4 };
@@ -195,7 +199,7 @@ struct WeatherRequest {
 enum class PrecipKind : uint8_t { None = 0, Rain = 1, Snow = 2, Mixed = 3, Unknown = 0xFF };
 
 struct WeatherDay {
-    uint32_t date = 0;  // UTC midnight of the local day, seconds
+    uint32_t date = 0;  // the local calendar day as UTC midnight of that date: format with gmtime
     uint8_t wmo_code = 0;
     int16_t low_c10 = 0;
     int16_t high_c10 = 0;
@@ -306,6 +310,8 @@ struct RouteStep {
     void fields(A& a) { a.str8(instruction); a.u32(distance_m); a.u16(point_index); }
 };
 
+// A route larger than one frame (long trips) is sent as a Transfer of kind Route whose data
+// is this message's payload.
 struct Route {
     SWP_MSG(Route);
     uint8_t status = 0;  // 0 ok, otherwise ErrorCode
@@ -315,30 +321,8 @@ struct Route {
     std::vector<RouteStep> steps;
     template <class A>
     void fields(A& a) {
-        a.u8(status); a.u32(distance_m); a.u32(duration_s); a.list(points, 256); a.list(steps, 32);
+        a.u8(status); a.u32(distance_m); a.u32(duration_s); a.list(points, 1024); a.list(steps, 128);
     }
-};
-
-// Offline maps: the companion downloads all tiles around a point into its SD cache.
-struct MapSyncRequest {
-    SWP_MSG(MapSyncRequest);
-    int32_t lat_e7 = 0, lon_e7 = 0;
-    uint16_t radius_m = 3000;
-    uint8_t zmin = 12, zmax = 17;
-    template <class A>
-    void fields(A& a) { a.i32(lat_e7); a.i32(lon_e7); a.u16(radius_m); a.u8(zmin); a.u8(zmax); }
-};
-
-enum class MapSyncState : uint8_t { Idle = 0, Running = 1, Done = 2, Failed = 3, Preparing = 4 };
-
-struct MapSyncStatus {
-    SWP_MSG(MapSyncStatus);
-    uint8_t state = 0;  // MapSyncState
-    uint32_t done = 0;  // tiles stored
-    uint32_t kbytes = 0;
-    std::string message;
-    template <class A>
-    void fields(A& a) { a.u8(state); a.u32(done); a.u32(kbytes); a.str8(message); }
 };
 
 // OSM data on the VPS helper (downloaded Geofabrik extracts and the map areas built from them).
@@ -362,7 +346,7 @@ struct MapDataStatus {
     void fields(A& a) { a.u8(status); a.str8(active); a.str8(building); a.str16(error, 300); }
 };
 
-enum class TransferKind : uint8_t { MapTile = 1, AlbumArt = 2, Generic = 3 };
+enum class TransferKind : uint8_t { MapTile = 1, AlbumArt = 2, Generic = 3, HttpBody = 4, Route = 5 };
 
 struct TransferBegin {
     SWP_MSG(TransferBegin);
@@ -672,6 +656,14 @@ struct WebConfigStatus {
     void fields(A& a) { a.u8(open); a.u16(remaining_s); a.str8(url); }
 };
 
+// Watch -> companion: forget every BLE bond, so a new watch can pair (sent by the watch's
+// Forget before it deletes its own bond).
+struct Unpair {
+    SWP_MSG(Unpair);
+    template <class A>
+    void fields(A&) {}
+};
+
 struct StatusRequest {
     SWP_MSG(StatusRequest);
     template <class A>
@@ -737,6 +729,52 @@ struct WatchSettings {
     }
 };
 
+
+// ---- HTTP proxy -------------------------------------------------------------------------
+// Watch -> link peer (companion, later a phone): perform this HTTPS request and answer with
+// HttpResponse. The peer verifies TLS certificates and refuses non-https URLs. Bodies larger
+// than kHttpInlineBody follow the HttpResponse as a Transfer of kind HttpBody, meta = id (u16 LE).
+
+enum class HttpMethod : uint8_t { Get = 0, Post = 1, Put = 2, Patch = 3, Delete = 4, Head = 5 };
+
+constexpr size_t kHttpMaxUrl = 1024;
+constexpr size_t kHttpMaxHeaders = 16;
+constexpr size_t kHttpMaxRequestBody = 2048;
+constexpr size_t kHttpInlineBody = 3072;
+constexpr uint32_t kHttpMaxResponse = 128 * 1024;
+
+struct HttpHeader {
+    std::string name;
+    std::string value;
+    template <class A>
+    void fields(A& a) { a.str8(name); a.str16(value, 1024); }
+};
+
+struct HttpRequest {
+    SWP_MSG(HttpRequest);
+    uint16_t id = 0;
+    uint8_t method = 0;  // HttpMethod
+    std::string url;
+    std::vector<HttpHeader> headers;
+    std::vector<uint8_t> body;
+    uint32_t max_response = 16 * 1024;  // larger responses fail with an error
+    template <class A>
+    void fields(A& a) {
+        a.u16(id); a.u8(method); a.str16(url, kHttpMaxUrl); a.list(headers, kHttpMaxHeaders);
+        a.bytes16(body, kHttpMaxRequestBody); a.u32(max_response);
+    }
+};
+
+struct HttpResponse {
+    SWP_MSG(HttpResponse);
+    uint16_t id = 0;
+    uint16_t status = 0;  // HTTP status; 0 = not performed / transport error (see `error`)
+    std::string error;
+    uint32_t body_size = 0;     // total; > body.size() means the body follows as a transfer
+    std::vector<uint8_t> body;  // inline when body_size <= kHttpInlineBody
+    template <class A>
+    void fields(A& a) { a.u16(id); a.u16(status); a.str8(error); a.u32(body_size); a.bytes16(body, kHttpInlineBody); }
+};
 
 #undef SWP_MSG
 

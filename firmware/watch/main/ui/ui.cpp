@@ -182,6 +182,7 @@ void update_brightness() {
 }
 
 void ui_timer_cb(lv_timer_t*) {
+    if (board::take_display_recovered()) lv_obj_invalidate(lv_screen_active());
     uint32_t dirty = app::take_dirty();
     if (dirty & app::kDirtyAlert) show_next_alert();
     if (dirty & app::kDirtyPasskey) update_passkey_overlay();

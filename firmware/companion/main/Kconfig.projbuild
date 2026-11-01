@@ -10,7 +10,7 @@ config PROTOTYPE_PLAYLIST_ID
         sync a user-selected set of playlists.
 
 config COMPANION_PAIRING_WINDOW_S
-    int "Seconds after boot (or BOOT button press) during which new BLE pairings are accepted"
+    int "Seconds after boot during which new BLE pairings are accepted even when already paired"
     default 300
 
 config COMPANION_PROTOTYPE_PASSKEY
@@ -20,7 +20,7 @@ config COMPANION_PROTOTYPE_PASSKEY
     help
         TODO(PROTOTYPE): the prototype uses one fixed, publicly known 6-digit passkey so the
         watch can pair without reading the serial console. Anyone in radio
-        range during the pairing window can bond with it. Production firmware must use a
+        range while it is unpaired (or during the post-boot window) can bond with it. Production firmware must use a
         per-device random passkey (or a passkey shown on a display).
 
 config COMPANION_SIM_LAT_E7

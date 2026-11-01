@@ -29,7 +29,7 @@ esp_timer_handle_t tick_timer;
 
 uint32_t caps() {
     return swp::kCapTime | swp::kCapPosition | swp::kCapWeather | swp::kCapMaps | swp::kCapNotifications | swp::kCapMusic |
-           swp::kCapWifiConfig | swp::kCapAudioDevices | swp::kCapConfig | swp::kCapTransfer;
+           swp::kCapWifiConfig | swp::kCapAudioDevices | swp::kCapConfig | swp::kCapTransfer | swp::kCapHttpProxy;
 }
 
 swp::TimeSync time_sync() {
@@ -192,11 +192,14 @@ void on_frame(uint16_t conn, const swp::Frame& f) {
         case MsgType::RouteRequest:
             if (auto m = swp::decode_message<swp::RouteRequest>(f)) cloud::request_route(conn, *m);
             break;
-        case MsgType::MapSyncRequest:
-            if (auto m = swp::decode_message<swp::MapSyncRequest>(f)) cloud::request_map_sync(conn, *m);
-            break;
         case MsgType::MapDataCommand:
             if (auto m = swp::decode_message<swp::MapDataCommand>(f)) cloud::request_map_data(conn, *m);
+            break;
+        case MsgType::HttpRequest:
+            if (auto m = swp::decode_message<swp::HttpRequest>(f)) cloud::request_http(conn, std::move(*m));
+            break;
+        case MsgType::Unpair:
+            ble_server::forget_bonds();
             break;
         case MsgType::NotificationAck:
             if (auto m = swp::decode_message<swp::NotificationAck>(f)) cloud::on_notification_ack(m->id);

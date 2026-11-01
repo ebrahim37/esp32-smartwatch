@@ -269,7 +269,10 @@ board::PowerStatus power() {
 
 TimerInfo timer() {
     std::lock_guard<std::mutex> g(mu);
-    return timer_info;
+    TimerInfo t = timer_info;
+    // Live value: the 250 ms service tick would otherwise make the display lag.
+    if (t.state == TimerState::Running) t.remaining_ms = std::max<int64_t>(0, (timer_end_us - esp_timer_get_time()) / 1000);
+    return t;
 }
 
 void timer_set(uint32_t seconds) {

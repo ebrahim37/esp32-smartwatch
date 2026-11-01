@@ -6,7 +6,6 @@
 
 #include "config.hpp"
 #include "dispatch.hpp"
-#include "driver/gpio.h"
 #include "esp_app_desc.h"
 #include "esp_bt_device.h"
 #include "esp_gap_ble_api.h"
@@ -147,7 +146,7 @@ void gap_cb(esp_gap_ble_cb_event_t ev, esp_ble_gap_cb_param_t* p) {
             break;
         case ESP_GAP_BLE_SEC_REQ_EVT: {
             bool accept = pairing_window_open() || is_bonded(p->ble_security.ble_req.bd_addr);
-            if (!accept) ESP_LOGW(TAG, "pairing rejected: window closed (press BOOT to open it)");
+            if (!accept) ESP_LOGW(TAG, "pairing rejected: already paired (Forget on the paired watch, or reboot, to pair a new one)");
             esp_ble_gap_security_rsp(p->ble_security.ble_req.bd_addr, accept);
             break;
         }
@@ -218,13 +217,9 @@ void gatts_cb(esp_gatts_cb_event_t ev, esp_gatt_if_t ifc, esp_ble_gatts_cb_param
             ESP_LOGI(TAG, "connected conn %u", p->connect.conn_id);
             // Ask for encryption right away; bonded peers re-encrypt silently.
             esp_ble_set_encryption(p->connect.remote_bda, ESP_BLE_SEC_ENCRYPT_MITM);
-            esp_ble_conn_update_params_t cp = {};
-            memcpy(cp.bda, p->connect.remote_bda, 6);
-            cp.min_int = 24;
-            cp.max_int = 40;
-            cp.latency = 4;
-            cp.timeout = 400;
-            esp_ble_gap_update_conn_params(&cp);
+            // Connection interval is the watch's choice (it speeds up while Maps is open);
+            // 251-byte packets carry a whole notification each.
+            esp_ble_gap_set_pkt_data_len(p->connect.remote_bda, 251);
             break;
         }
         case ESP_GATTS_DISCONNECT_EVT: {
@@ -312,8 +307,6 @@ void tx_task(void*) {
     }
 }
 
-void IRAM_ATTR boot_isr(void*) { pairing_until_us.store(esp_timer_get_time() + 120LL * 1000000); }
-
 }  // namespace
 
 void init() {
@@ -340,18 +333,9 @@ void init() {
     esp_ble_gap_set_security_param(ESP_BLE_SM_ONLY_ACCEPT_SPECIFIED_SEC_AUTH, &only_specified, sizeof only_specified);
     esp_ble_gap_set_security_param(ESP_BLE_SM_SET_INIT_KEY, &init_key, sizeof init_key);
     esp_ble_gap_set_security_param(ESP_BLE_SM_SET_RSP_KEY, &rsp_key, sizeof rsp_key);
-    ESP_LOGI(TAG, "BLE pairing passkey: %06lu (pairing window %d s after boot; press BOOT to reopen)", (unsigned long)passkey,
+    ESP_LOGI(TAG, "BLE pairing passkey: %06lu (open while unpaired, and for %d s after boot)", (unsigned long)passkey,
              CONFIG_COMPANION_PAIRING_WINDOW_S);
     open_pairing_window(CONFIG_COMPANION_PAIRING_WINDOW_S);
-
-    gpio_config_t io = {};
-    io.pin_bit_mask = 1ULL << GPIO_NUM_0;
-    io.mode = GPIO_MODE_INPUT;
-    io.pull_up_en = GPIO_PULLUP_ENABLE;
-    io.intr_type = GPIO_INTR_NEGEDGE;
-    gpio_config(&io);
-    gpio_install_isr_service(0);
-    gpio_isr_handler_add(GPIO_NUM_0, boot_isr, nullptr);
 
     esp_ble_gatts_app_register(kAppId);
 }
@@ -417,7 +401,16 @@ uint8_t role(uint16_t conn_id) {
     return i >= 0 ? sessions[i].role : 0;
 }
 
+void forget_bonds() {
+    int n = esp_ble_get_bond_device_num();
+    if (n <= 0) return;
+    std::vector<esp_ble_bond_dev_t> list(n);
+    esp_ble_get_bond_device_list(&n, list.data());
+    for (int i = 0; i < n; ++i) esp_ble_remove_bond_device(list[i].bd_addr);
+    ESP_LOGW(TAG, "unpaired on request of the watch (%d bond(s) removed); pairing is open", n);
+}
+
 void open_pairing_window(uint32_t seconds) { pairing_until_us.store(esp_timer_get_time() + static_cast<int64_t>(seconds) * 1000000); }
-bool pairing_window_open() { return esp_timer_get_time() < pairing_until_us.load(); }
+bool pairing_window_open() { return esp_ble_get_bond_device_num() <= 0 || esp_timer_get_time() < pairing_until_us.load(); }
 
 }  // namespace ble_server

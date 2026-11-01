@@ -8,6 +8,7 @@
 #include "app/state.hpp"
 #include "app/tiles.hpp"
 #include "ble/central.hpp"
+#include "ble/fetch.hpp"
 #include "esp_app_desc.h"
 #include "esp_log.h"
 #include "esp_mac.h"
@@ -33,8 +34,21 @@ std::atomic<int64_t> last_rx_us{0};
 
 // Decoders and the transfer receiver are only touched from the NimBLE host task.
 swp::FrameDecoder dec_companion;
-swp::TransferReceiver tile_rx(256 * 1024, 8);
+swp::TransferReceiver tile_rx(256 * 1024, 8);  // map tiles and HTTP bodies
 tiles::Key tile_rx_key{};
+uint16_t http_rx_id = 0;
+
+constexpr uint8_t kKindTile = static_cast<uint8_t>(swp::TransferKind::MapTile);
+constexpr uint8_t kKindHttp = static_cast<uint8_t>(swp::TransferKind::HttpBody);
+constexpr uint8_t kKindRoute = static_cast<uint8_t>(swp::TransferKind::Route);
+
+void apply_route(swp::Route&& r) {
+    app::Locked s;
+    s->route = std::move(r);
+    s->route_pending = false;
+    s->route_valid = s->route.status == 0 && s->route.points.size() >= 2;
+    app::mark(app::kDirtyRoute);
+}
 
 uint32_t own_caps() { return swp::kCapTime | swp::kCapConfig; }
 
@@ -70,15 +84,36 @@ void after_handshake() {
     tiles::pump();
 }
 
+void transfer_done(swp::TransferReceiver::Event ev) {
+    using Ev = swp::TransferReceiver::Event;
+    if (ev != Ev::Complete && ev != Ev::Failed) return;
+    bool ok = ev == Ev::Complete;
+    if (tile_rx.kind() == kKindTile) {
+        if (ok) tiles::on_tile(tile_rx_key, tile_rx.take_data());
+        else tiles::on_failed(tile_rx_key);
+    } else if (tile_rx.kind() == kKindHttp) {
+        if (ok) fetch::on_body(http_rx_id, tile_rx.take_data());
+        else fetch::on_body_failed(http_rx_id);
+    } else if (tile_rx.kind() == kKindRoute) {
+        auto r = ok ? swp::decode_payload<swp::Route>(tile_rx.take_data()) : std::nullopt;
+        if (r) {
+            apply_route(std::move(*r));
+        } else {
+            swp::Route failed;
+            failed.status = static_cast<uint8_t>(swp::ErrorCode::Unavailable);
+            apply_route(std::move(failed));
+        }
+    }
+}
+
 void handle_transfer_begin(const swp::TransferBegin& b) {
     swp::TransferAck ack;
-    auto ev = tile_rx.on_begin(b, ack);
     tiles::Key k{};
-    bool is_tile = b.kind == static_cast<uint8_t>(swp::TransferKind::MapTile) && tiles::decode_meta(b.meta, k);
-    if (is_tile) tile_rx_key = k;
+    if (b.kind == kKindTile && tiles::decode_meta(b.meta, k)) tile_rx_key = k;
+    if (b.kind == kKindHttp && b.meta.size() >= 2) http_rx_id = static_cast<uint16_t>(b.meta[0] | b.meta[1] << 8);
+    auto ev = tile_rx.on_begin(b, ack);
     send(ack);
-    if (ev == swp::TransferReceiver::Event::Failed && is_tile) tiles::on_failed(k);
-    if (ev == swp::TransferReceiver::Event::Complete && is_tile) tiles::on_tile(k, tile_rx.take_data());
+    transfer_done(ev);
 }
 
 void handle_transfer_chunk(const swp::TransferChunk& c) {
@@ -86,8 +121,7 @@ void handle_transfer_chunk(const swp::TransferChunk& c) {
     bool send_ack = false;
     auto ev = tile_rx.on_chunk(c, ack, send_ack);
     if (send_ack) send(ack);
-    if (ev == swp::TransferReceiver::Event::Complete && tile_rx.kind() == static_cast<uint8_t>(swp::TransferKind::MapTile))
-        tiles::on_tile(tile_rx_key, tile_rx.take_data());
+    transfer_done(ev);
 }
 
 void handle_notification(const swp::Notification& n) {
@@ -175,14 +209,6 @@ void handle_companion(const swp::Frame& f) {
                 app::mark(app::kDirtySearch);
             }
             break;
-        case MsgType::MapSyncStatus:
-            if (auto m = swp::decode_message<swp::MapSyncStatus>(f)) {
-                app::Locked s;
-                s->map_sync = std::move(*m);
-                s->map_sync_valid = true;
-                app::mark(app::kDirtyMapData);
-            }
-            break;
         case MsgType::WebConfigStatus:
             if (auto m = swp::decode_message<swp::WebConfigStatus>(f)) {
                 app::Locked s;
@@ -201,13 +227,7 @@ void handle_companion(const swp::Frame& f) {
             }
             break;
         case MsgType::Route:
-            if (auto m = swp::decode_message<swp::Route>(f)) {
-                app::Locked s;
-                s->route = std::move(*m);
-                s->route_pending = false;
-                s->route_valid = s->route.status == 0 && s->route.points.size() >= 2;
-                app::mark(app::kDirtyRoute);
-            }
+            if (auto m = swp::decode_message<swp::Route>(f)) apply_route(std::move(*m));
             break;
         case MsgType::TransferBegin:
             if (auto m = swp::decode_message<swp::TransferBegin>(f)) handle_transfer_begin(*m);
@@ -219,9 +239,12 @@ void handle_companion(const swp::Frame& f) {
             if (auto m = swp::decode_message<swp::TransferAbort>(f)) {
                 if (tile_rx.active() && tile_rx.id() == m->id) {
                     tile_rx.reset();
-                    tiles::on_failed(tile_rx_key);
+                    transfer_done(swp::TransferReceiver::Event::Failed);
                 }
             }
+            break;
+        case MsgType::HttpResponse:
+            if (auto m = swp::decode_message<swp::HttpResponse>(f)) fetch::on_response(std::move(*m));
             break;
         case MsgType::Notification:
             if (auto m = swp::decode_message<swp::Notification>(f)) handle_notification(*m);
@@ -346,6 +369,7 @@ void init() {
     esp_timer_handle_t t;
     esp_timer_create(&a, &t);
     esp_timer_start_periodic(t, kHeartbeatUs);
+    fetch::init();
 }
 
 bool enqueue(uint8_t type, std::vector<uint8_t>&& payload) {
@@ -382,6 +406,7 @@ void on_companion_down() {
     dec_companion.reset();
     tile_rx.reset();
     tiles::on_link_reset();
+    fetch::on_link_down();
     {
         app::Locked s;
         s->search_pending = false;

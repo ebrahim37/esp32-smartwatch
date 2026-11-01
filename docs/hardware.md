@@ -23,7 +23,7 @@ Flash: Waveshare's validated configuration and ESP-IDF's stable flash driver add
 |----------|--------|
 | SoC | ESP32 (dual-core, BR/EDR + BLE, Wi-Fi), 4 MB flash, 8 MB PSRAM (4 MB directly mapped by ESP32) |
 | microSD | **1-bit SDMMC, slot 1: CLK GPIO14, CMD GPIO15, D0 GPIO2** — verified against Freenove's `Sketch_03.1_SDMMC_Test` ("SD_MMC.setPins(14, 15, 2)", one-bit mode) |
-| Buttons | BOOT on GPIO0 (re-opens the BLE pairing window) |
+| Buttons | BOOT on GPIO0 (unused by the firmware) |
 | USB | CH340 serial (`/dev/ttyUSB0`) |
 | Camera | present, unused |
 

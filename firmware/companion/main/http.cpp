@@ -6,6 +6,7 @@
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -68,7 +69,85 @@ Result read_body(esp_http_client_handle_t c, std::vector<uint8_t>& body, size_t 
     return r;
 }
 
+struct Sink {
+    std::vector<uint8_t>* body;
+    size_t max_len;
+    bool too_large;
+};
+
+esp_err_t sink_event(esp_http_client_event_t* e) {
+    auto* s = static_cast<Sink*>(e->user_data);
+    if (e->event_id == HTTP_EVENT_ON_DATA && s && !s->too_large) {
+        if (s->body->size() + e->data_len > s->max_len) s->too_large = true;
+        else s->body->insert(s->body->end(), static_cast<uint8_t*>(e->data), static_cast<uint8_t*>(e->data) + e->data_len);
+    }
+    return ESP_OK;
+}
+
+std::string host_of(const std::string& url) {
+    size_t a = url.find("://");
+    if (a == std::string::npos) return "";
+    a += 3;
+    return url.substr(a, url.find('/', a) - a);
+}
+
 }  // namespace
+
+Session::~Session() { reset(); }
+
+void Session::reset() {
+    if (client_) esp_http_client_cleanup(client_);
+    client_ = nullptr;
+    host_.clear();
+}
+
+Result Session::get(const std::string& url, const Headers& headers, std::vector<uint8_t>& body, size_t max_len) {
+    Result r;
+    if (url.rfind("https://", 0) != 0) {
+        r.error = "invalid/non-TLS url";
+        return r;
+    }
+    Sink sink{&body, max_len, false};
+    for (int attempt = 0; attempt < 2; ++attempt) {  // a kept-alive connection may have been closed by the server
+        if (client_ && host_of(url) != host_) reset();
+        if (!client_) {
+            esp_http_client_config_t cfg = {};
+            cfg.url = url.c_str();
+            cfg.timeout_ms = 15000;
+            cfg.crt_bundle_attach = esp_crt_bundle_attach;
+            cfg.buffer_size = 4096;
+            cfg.buffer_size_tx = 1024;
+            cfg.keep_alive_enable = true;
+            cfg.event_handler = sink_event;
+            client_ = esp_http_client_init(&cfg);
+            if (!client_) {
+                r.error = "client init failed";
+                return r;
+            }
+            host_ = host_of(url);
+            esp_http_client_set_header(client_, "User-Agent", "sw-companion/0.1");
+        } else {
+            esp_http_client_set_url(client_, url.c_str());
+        }
+        for (auto& h : headers) esp_http_client_set_header(client_, h.first.c_str(), h.second.c_str());
+        body.clear();
+        sink.too_large = false;
+        esp_http_client_set_user_data(client_, &sink);
+        esp_err_t err = esp_http_client_perform(client_);
+        if (err == ESP_OK) {
+            r.status = esp_http_client_get_status_code(client_);
+            if (sink.too_large) {
+                r.status = 0;
+                r.error = "response too large";
+            }
+            return r;
+        }
+        r.error = esp_err_to_name(err);
+        reset();
+    }
+    ESP_LOGW(TAG, "GET failed: %s", r.error.c_str());
+    return r;
+}
 
 Result get(const std::string& url, const Headers& headers, std::vector<uint8_t>& body, size_t max_len) {
     Result r;
@@ -85,6 +164,24 @@ Result get(const std::string& url, const Headers& headers, std::vector<uint8_t>&
     }
     esp_http_client_cleanup(c);
     if (!r.ok()) ESP_LOGW(TAG, "GET failed: status %d %s", r.status, r.error.c_str());
+    return r;
+}
+
+Result request(esp_http_client_method_t method, const std::string& url, const Headers& headers, const std::vector<uint8_t>& req_body,
+               std::vector<uint8_t>& body, size_t max_len) {
+    Result r;
+    esp_http_client_handle_t c = open_client(url, method, headers);
+    if (!c) {
+        r.error = "invalid/non-TLS url";
+        return r;
+    }
+    int n = static_cast<int>(req_body.size());
+    esp_err_t err = esp_http_client_open(c, n);
+    if (err == ESP_OK && (n == 0 || esp_http_client_write(c, reinterpret_cast<const char*>(req_body.data()), n) == n))
+        r = read_body(c, body, max_len);
+    else
+        r.error = err != ESP_OK ? esp_err_to_name(err) : "write failed";
+    esp_http_client_cleanup(c);
     return r;
 }
 
@@ -150,6 +247,7 @@ Result download(const std::string& url, const Headers& headers, const std::strin
     static constexpr size_t kBuf = 8192;
     auto* buf = static_cast<char*>(malloc(kBuf));
     uint64_t written = base;
+    int64_t t0 = esp_timer_get_time();
     while (buf) {
         if (should_abort && should_abort()) {
             r.status = 0;
@@ -169,6 +267,8 @@ Result download(const std::string& url, const Headers& headers, const std::strin
             break;
         }
         written += n;
+        if ((written - base) / (512 * 1024) != (written - base - n) / (512 * 1024))
+            ESP_LOGI(TAG, "download: %llu KB in %lld ms", (unsigned long long)((written - base) / 1024), (esp_timer_get_time() - t0) / 1000);
         taskYIELD();
     }
     free(buf);

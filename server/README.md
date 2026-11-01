@@ -14,7 +14,8 @@ used for on-demand map data.
 curl -fsSLO https://raw.githubusercontent.com/ebrahim37/infra-template/main/vps1/services/rootless/watch/Containerfile
 podman build -t localhost/watch-server .
 DEVICE_TOKEN="$(openssl rand -base64 32)"   # also enter it on the watch: Settings → Server
-# Required variables are set; commented lines show each optional one with its default.
+# Required variables are set; commented lines show each optional one with its default
+# (lines marked "no default" are off unless you set them).
 env=(
   -e DEVICE_TOKEN="$DEVICE_TOKEN"
   -e TILE_URL_TEMPLATE='https://tiles.example.com/styles/basic-preview/{z}/{x}/{y}.png'
@@ -31,22 +32,31 @@ env=(
   #-e WEATHER_CACHE_SECS=900
   # Tiles (TILE_RECOLOR: dark-heuristic for light OSM styles, none if upstream is already dark)
   #-e TILE_RECOLOR=dark-heuristic
+  # TILE_SCALE=2 renders each tile from the zoom-1 tile at 2x density (larger, sharper labels);
+  # {r} in TILE_URL_TEMPLATE becomes @2x, or @2x is inserted before the extension
+  #-e TILE_SCALE=2
   #-e TILE_CACHE_MAX_MB=2048
   #-e 'TILE_ATTRIBUTION=© OpenStreetMap contributors'
   # Routing: one base URL instead of OSRM_URL_*; {profile} -> foot|bicycle|driving
   #-e 'OSRM_URL=https://osrm.example.com/{profile}'
+  # Trips the local map area can't answer (destination 50+ km away): FOSSGIS public OSRM,
+  # light use only (max 1 request/s, which the helper enforces); ROUTE_FALLBACK=off disables
+  #-e ROUTE_FALLBACK_URL_FOOT=https://routing.openstreetmap.de/routed-foot
+  #-e ROUTE_FALLBACK_URL_BICYCLE=https://routing.openstreetmap.de/routed-bike
+  #-e ROUTE_FALLBACK_URL_DRIVING=https://routing.openstreetmap.de/routed-car
   # Search
   #-e PHOTON_URL=https://photon.komoot.io
   #-e OVERPASS_URL=https://overpass-api.de/api/interpreter
-  # On-demand map data (disabled while MAPCACHE_DIR is unset; also mount -v watch-mapcache:/mapcache) using
-  # Geofabrik extracts and the areas built from them (~100 km around where the watch is), in a 10 GB ring cache
-  #-e MAPCACHE_DIR=/mapcache
+  # On-demand map data: Geofabrik extracts and the areas built from them (~100 km around
+  # where the watch is) in a 10 GB ring cache. Off until MAPCACHE_DIR is set (also mount
+  # -v watch-mapcache:/mapcache); the watch then shows "not configured: MAPCACHE_DIR".
+  #-e MAPCACHE_DIR=/mapcache  # no default
   #-e MAPCACHE_MAX_GB=10
   #-e MAP_AREA_KM=100
   #-e GEOFABRIK_INDEX_URL=https://download.geofabrik.de/index-v1.json
   #-e OSRM_PROFILES_DIR=/opt
   #-e PLANETILER_JAR=/opt/planetiler.jar
-  #-e JAVA_OPTS=-Xmx3g
+  #-e JAVA_OPTS=-Xmx3g  # no default (JVM picks 1/4 of RAM); the reference deployment uses 3 GB
 )
 podman run -d --name watch-server -p 127.0.0.1:47913:8080 -v watch-server-data:/data \
   "${env[@]}" localhost/watch-server

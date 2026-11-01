@@ -17,10 +17,11 @@ Data sources (pick services whose terms allow your use; self-hosting is recommen
 | Feature | Default | Notes |
 |---------|---------|-------|
 | Weather | Open-Meteo forecast API | cached 15 min per ~1 km cell |
-| Tiles | `TILE_URL_TEMPLATE` (required) | must be self-hosted or a provider permitting caching; `tile.openstreetmap.org` is refused |
-| Text search | Photon | location-biased |
-| Nearby POIs | Overpass (amenity/shop within 600 m) | light use only on the public instance |
+| Tiles | `TILE_URL_TEMPLATE` (required) | must be self-hosted or a provider permitting caching; `tile.openstreetmap.org` is refused; rendered at 2x from the zoom-1 tile (`TILE_SCALE`) |
+| Search | local index of the map area (below), then Photon | Photon fills in outside the area or when there are fewer than 3 local matches |
+| Nearby POIs | local index (named places within 1 km), then Overpass | light use only on the public Overpass instance |
 | Routing | OSRM (`OSRM_URL`, `{profile}` placeholder supported) | self-host per profile (foot/bicycle/driving) |
+| Long routes | FOSSGIS OSRM (`routing.openstreetmap.de`) | destinations outside the local area; ≤1 request/s, light use; `ROUTE_FALLBACK=off` disables |
 
 Attribution: "© OpenStreetMap contributors" is returned with tiles/search and shown on the watch.
 
@@ -61,8 +62,9 @@ while the helper:
    (from Geofabrik's `index-v1.json`, refreshed weekly),
 2. downloads it into a ring cache capped at `MAPCACHE_MAX_GB` (oldest extracts/areas are
    deleted first; the active area never is),
-3. clips the square with osmium, builds OSRM graphs (foot, bicycle, car) and OpenMapTiles
-   vector tiles with Planetiler,
+3. clips the square with osmium, builds OSRM graphs (foot, bicycle, car), a search index of
+   named places (`pois.json`: amenities, shops, tourism, transit, places; built on first
+   search for areas made before it existed) and OpenMapTiles vector tiles with Planetiler,
 4. switches `MAPCACHE_DIR/active` to the new area. The tile server (tileserver-gl) and
    routing (osrm-routed) containers watch that link and reload.
 
@@ -76,5 +78,12 @@ stream of 4-bit pixels, ~6 KB per 256 px tile. The companion stores and forwards
 the watch inflates them with the ESP32-S3 ROM `tinfl` straight into an RGB565 buffer that
 LVGL draws directly (no PNG decoder). `GET /v1/maps/bundle?lat&lon&radius_m&zmin&zmax`
 streams many tiles in one response (`"SWB1"`, then `z u8, x u32, y u32, len u32, SWT` per
-tile, `0xFF` at the end); the companion uses it for "Download maps around me" so an offline
-area costs one HTTPS request instead of one per tile.
+tile, `0xFF` at the end, rendered four at a time); the companion uses it to keep the area
+around its position (5 km, zoom 12–16) in its SD cache, refreshed after moving 2 km or
+weekly, so an offline area costs one HTTPS request instead of one per tile.
+
+Interactive tiles take one request each over a kept-alive HTTPS connection (one TLS
+handshake per session, not per tile). The companion fetches up to two tiles ahead of the
+BLE transfer, sends before writing to SD, and the watch shortens the BLE connection interval
+(15–20 ms, 251-byte packets) while Maps is open. Each tile is logged on the companion as
+`cloud: z/x/y net|sd <fetch> ms: <bytes> B, ble <transfer> ms`.

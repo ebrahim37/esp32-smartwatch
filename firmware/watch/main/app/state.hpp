@@ -122,8 +122,6 @@ struct State {
     bool route_pending = false;
     bool route_valid = false;
     swp::Route route;
-    bool map_sync_valid = false;
-    swp::MapSyncStatus map_sync;
     bool map_data_valid = false;
     swp::MapDataStatus map_data;
 

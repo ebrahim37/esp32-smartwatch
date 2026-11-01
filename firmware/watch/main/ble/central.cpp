@@ -43,6 +43,20 @@ uint8_t own_addr_type = BLE_OWN_ADDR_PUBLIC;
 std::atomic<bool> synced{false};
 std::atomic<uint16_t> conn{BLE_HS_CONN_HANDLE_NONE};
 std::atomic<uint16_t> cur_mtu{23};
+std::atomic<bool> fast_wanted{false};
+
+// Idle: 30-50 ms with peripheral latency (low power). Fast (Maps open): 15-20 ms, no latency,
+// for tile transfers.
+void apply_conn_params(uint16_t h) {
+    bool fast = fast_wanted.load();
+    struct ble_gap_upd_params p = {};
+    p.itvl_min = fast ? 12 : 24;
+    p.itvl_max = fast ? 16 : 40;
+    p.latency = fast ? 0 : 4;
+    p.supervision_timeout = 400;
+    int rc = ble_gap_update_params(h, &p);
+    if (rc != 0) ESP_LOGD(TAG, "conn param update: %d", rc);
+}
 uint16_t rx_handle = 0, tx_handle = 0, tx_cccd = 0, svc_start = 0, svc_end = 0;
 
 // Manager-owned state (only touched by mgr_task, except where noted).
@@ -266,6 +280,9 @@ int gap_event(struct ble_gap_event* ev, void*) {
                 ESP_LOGI(TAG, "connected; securing link");
                 set_state(app::LinkState::Securing);
                 ble_gattc_exchange_mtu(ev->connect.conn_handle, on_mtu, nullptr);
+                // 251-byte link-layer packets: one ATT notification per packet instead of ~10.
+                ble_gap_set_data_len(ev->connect.conn_handle, 251, 2120);
+                if (fast_wanted.load()) apply_conn_params(ev->connect.conn_handle);
                 // Encrypts with the stored LTK when bonded, otherwise starts passkey pairing.
                 ble_gap_security_initiate(ev->connect.conn_handle);
             } else {
@@ -437,6 +454,10 @@ void mgr_task(void*) {
                 if (h == BLE_HS_CONN_HANDLE_NONE) try_connect();
                 break;
             case Cmd::Forget: {
+                if (h != BLE_HS_CONN_HANDLE_NONE && swlink::ready()) {
+                    swlink::send(swp::Unpair{});  // companion drops its bond too, so any watch can pair
+                    vTaskDelay(pdMS_TO_TICKS(300));  // let the tx task write it before we disconnect
+                }
                 attempt_pending = false;
                 if (ble_gap_conn_active()) ble_gap_conn_cancel();
                 if (peer.valid) {
@@ -561,5 +582,11 @@ void forget() { post(Cmd::Forget); }
 void submit_passkey(uint32_t pk) { post(Cmd::Passkey, pk); }
 void cancel_passkey() { post(Cmd::CancelPasskey); }
 void drop_link() { post(Cmd::Drop); }
+
+void set_fast(bool on) {
+    if (fast_wanted.exchange(on) == on) return;
+    uint16_t h = conn.load();
+    if (h != BLE_HS_CONN_HANDLE_NONE) apply_conn_params(h);
+}
 
 }  // namespace central

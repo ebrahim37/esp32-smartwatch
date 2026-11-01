@@ -12,6 +12,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "qmi8658.h"
+#include "src/display/lv_display_private.h"  // `flushing`, for the flush watchdog
 
 namespace board {
 namespace {
@@ -23,6 +24,27 @@ Capabilities caps;
 lv_display_t* disp = nullptr;
 qmi8658_dev_t imu_dev;
 SemaphoreHandle_t i2c_mutex = nullptr;  // serializes our IMU/PMIC reads across tasks
+
+// Flush watchdog: LVGL busy-waits until the panel driver reports a flush done. If that
+// report is ever lost the UI freezes mid-frame (horizontal bands of a half-drawn screen).
+esp_timer_handle_t flush_wd = nullptr;
+int64_t flushing_since_us = 0;
+std::atomic<bool> recovered{false};
+
+void flush_wd_cb(void*) {
+    if (!disp || !disp->flushing) {
+        flushing_since_us = 0;
+        return;
+    }
+    int64_t now = esp_timer_get_time();
+    if (!flushing_since_us) flushing_since_us = now;
+    if (now - flushing_since_us > 500 * 1000) {
+        ESP_LOGE(TAG, "display flush not completed after %lld ms; forcing it", (now - flushing_since_us) / 1000);
+        flushing_since_us = 0;
+        recovered.store(true);
+        lv_display_flush_ready(disp);
+    }
+}
 
 // Haptic pattern state, driven by a one-shot esp_timer so callers never block.
 esp_timer_handle_t motor_timer = nullptr;
@@ -106,6 +128,10 @@ esp_err_t init() {
     cfg.flags.buff_spiram = false;
     disp = bsp_display_start_with_config(&cfg);
     if (!disp) return ESP_FAIL;
+    esp_timer_create_args_t wd = {};
+    wd.callback = flush_wd_cb;
+    wd.name = "flush_wd";
+    if (esp_timer_create(&wd, &flush_wd) == ESP_OK) esp_timer_start_periodic(flush_wd, 100 * 1000);
 
     init_imu(bus);
     init_motor();
@@ -116,6 +142,7 @@ esp_err_t init() {
 
 bool lvgl_lock(uint32_t timeout_ms) { return lvgl_port_lock(timeout_ms); }
 void lvgl_unlock() { lvgl_port_unlock(); }
+bool take_display_recovered() { return recovered.exchange(false); }
 
 void set_brightness(int percent) {
     if (percent < 1) percent = 1;

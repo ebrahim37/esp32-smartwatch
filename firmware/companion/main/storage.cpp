@@ -4,6 +4,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <atomic>
+#include <cctype>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -29,10 +31,13 @@ namespace storage {
 namespace {
 
 constexpr const char* TAG = "storage";
-constexpr const char* kIndexPath = "/sdcard/maps/lru.idx";
+
 constexpr int kTileBlockShift = 3;  // LRU granularity: 8x8 tile blocks per zoom level
 
 std::mutex mu;
+std::mutex tile_io;  // serialises tile file writes (worker and prefetch task)
+std::string tiles_root;  // maps/<style>; guarded by `mu`
+std::atomic<bool> cleanup_pending{false};
 Info inf;
 sdmmc_card_t* card = nullptr;
 FATFS* fs = nullptr;
@@ -42,6 +47,11 @@ ccore::Quota music_q{ccore::kMusicQuota, 0};
 std::unique_ptr<ccore::LruIndex> lru;
 bool lru_dirty = false;
 int64_t lru_saved_us = 0;
+bool lru_sizes_dirty = false;  // entries added or removed since the last save
+uint32_t cluster_bytes = 32 * 1024;
+
+// Bytes a file of `n` bytes occupies on the card: small tiles cost a whole cluster each.
+uint64_t on_card(uint64_t n) { return (n + cluster_bytes - 1) / cluster_bytes * cluster_bytes; }
 uint64_t access_clock = 0;
 
 void set_state(swp::SdState st, const std::string& detail) {
@@ -161,6 +171,12 @@ bool mount() {
         fs = nullptr;
         return false;
     }
+#if FF_MAX_SS != FF_MIN_SS
+    cluster_bytes = static_cast<uint32_t>(fs->csize) * fs->ssize;
+#else
+    cluster_bytes = static_cast<uint32_t>(fs->csize) * FF_MAX_SS;
+#endif
+    ESP_LOGI(TAG, "FAT cluster size %lu KB", (unsigned long)(cluster_bytes / 1024));
     return true;
 }
 
@@ -195,13 +211,14 @@ std::string block_key(uint8_t z, uint32_t x, uint32_t y) {
     return b;
 }
 
-void load_index() {
-    lru = std::make_unique<ccore::LruIndex>(ccore::kMapsQuota);
+// Loads (or rebuilds) the LRU index of tree `root`; returns it without touching shared state.
+std::unique_ptr<ccore::LruIndex> load_index(const std::string& root, uint64_t& clock) {
+    auto lru = std::make_unique<ccore::LruIndex>(ccore::kMapsQuota);
     std::vector<uint8_t> blob;
-    if (read_file(kIndexPath, blob, 4 * 1024 * 1024)) {
+    if (read_file(root + "/lru.idx", blob, 4 * 1024 * 1024)) {
         swp::Reader r(blob.data(), blob.size());
-        if (r.u8() == 1) {
-            access_clock = r.u64();
+        if (r.u8() == 2) {  // v2: sizes are bytes on the card
+            clock = r.u64();
             uint32_t n = r.u32();
             for (uint32_t i = 0; i < n && !r.failed(); ++i) {
                 std::string k = r.str8();
@@ -209,19 +226,19 @@ void load_index() {
                 uint64_t t = r.u64();
                 if (!r.failed()) lru->put(k, sz, t);
             }
-            if (!r.failed()) return;
+            if (!r.failed()) return lru;
         }
         lru = std::make_unique<ccore::LruIndex>(ccore::kMapsQuota);
     }
     // No (valid) index: rebuild from the directory tree. Access order is unknown, so every
     // block starts equally old.
-    ESP_LOGI(TAG, "rebuilding map cache index");
-    DIR* zd = opendir(kMapsDir);
-    if (!zd) return;
+    ESP_LOGI(TAG, "rebuilding map cache index for %s", root.c_str());
+    DIR* zd = opendir(root.c_str());
+    if (!zd) return lru;
     while (struct dirent* ze = readdir(zd)) {
         int z = atoi(ze->d_name);
         if (z <= 0 || z > 20) continue;
-        std::string zp = std::string(kMapsDir) + "/" + ze->d_name;
+        std::string zp = root + "/" + ze->d_name;
         DIR* xd = opendir(zp.c_str());
         if (!xd) continue;
         while (struct dirent* xe = readdir(xd)) {
@@ -236,7 +253,7 @@ void load_index() {
                 struct stat st;
                 std::string yp = xp + "/" + ye->d_name;
                 if (stat(yp.c_str(), &st) == 0 && S_ISREG(st.st_mode)) {
-                    lru->add(block_key(static_cast<uint8_t>(z), x, y), st.st_size, 0);
+                    lru->add(block_key(static_cast<uint8_t>(z), x, y), static_cast<int64_t>(on_card(st.st_size)), 0);
                 }
             }
             closedir(yd);
@@ -245,7 +262,7 @@ void load_index() {
         closedir(xd);
     }
     closedir(zd);
-    lru_dirty = true;
+    return lru;
 }
 
 void evict_block(const std::string& key) {
@@ -258,7 +275,7 @@ void evict_block(const std::string& key) {
             unlink(tile_path(static_cast<uint8_t>(z), x, y).c_str());
         }
     lru->remove(key);
-    lru_dirty = true;
+    lru_dirty = lru_sizes_dirty = true;
 }
 
 void refresh_usage() {
@@ -302,7 +319,6 @@ bool bring_up() {
     ensure_dir(kMapsDir);
     ensure_dir(kMemosDir);
     set_state(swp::SdState::Mounted, d.action == ccore::SdAction::Format ? "formatted FAT32" : ccore::volume_kind_name(p.kind));
-    load_index();
     music_q.used = dir_size(kMusicDir);
     refresh_usage();
     auto i = info();
@@ -311,11 +327,50 @@ bool bring_up() {
     return true;
 }
 
+void remove_tree(const std::string& path) {
+    if (DIR* d = opendir(path.c_str())) {
+        while (struct dirent* e = readdir(d)) {
+            if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+            std::string p = path + "/" + e->d_name;
+            if (e->d_type == DT_DIR) remove_tree(p);
+            else unlink(p.c_str());
+        }
+        closedir(d);
+        vTaskDelay(1);
+    }
+    rmdir(path.c_str());
+}
+
+// Everything in maps/ except the current style's tree: other styles and the pre-style layout.
+void remove_old_tiles() {
+    std::string keep = tiles_dir();
+    if (keep.empty()) return;
+    keep = keep.substr(keep.rfind('/') + 1);
+    DIR* d = opendir(kMapsDir);
+    if (!d) return;
+    std::vector<std::string> old;
+    while (struct dirent* e = readdir(d)) {
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..") || keep == e->d_name || !strcmp(e->d_name, ".bundle")) continue;
+        old.push_back(std::string(kMapsDir) + "/" + e->d_name);
+    }
+    closedir(d);
+    if (old.empty()) return;
+    ESP_LOGI(TAG, "removing %u entries of an older tile cache", (unsigned)old.size());
+    for (auto& p : old) {
+        struct stat st;
+        if (stat(p.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) remove_tree(p);
+        else unlink(p.c_str());
+    }
+    refresh_usage();
+}
+
 void storage_task(void*) {
     // Retry while no usable card (hot-plug); never retries formatting decisions on I/O errors.
     while (!bring_up()) vTaskDelay(pdMS_TO_TICKS(30000));
-    for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(60000));
+    for (int tick = 0;; ++tick) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        if (cleanup_pending.exchange(false)) remove_old_tiles();
+        if (tick % 60 != 59) continue;
         refresh_usage();
         flush_index();
     }
@@ -350,26 +405,66 @@ void music_set_used(uint64_t b) {
     inf.music_used = b;
 }
 
+std::string tiles_dir() {
+    std::lock_guard<std::mutex> g(mu);
+    return tiles_root;
+}
+
+void set_tile_style(const std::string& style) {
+    std::string name;
+    for (char c : style)
+        if (isalnum(static_cast<unsigned char>(c)) || c == '@' || c == '-') name += c;
+    if (name.empty() || name.size() > 16 || !mounted()) return;
+    std::string root = std::string(kMapsDir) + "/" + name;
+    if (tiles_dir() == root) return;
+    std::lock_guard<std::mutex> io(tile_io);
+    ensure_dir(kMapsDir);
+    ensure_dir(root.c_str());
+    uint64_t clock = 0;
+    auto idx = load_index(root, clock);
+    {
+        std::lock_guard<std::mutex> g(mu);
+        tiles_root = root;
+        lru = std::move(idx);
+        access_clock = clock;
+        lru_dirty = lru_sizes_dirty = true;
+    }
+    ESP_LOGI(TAG, "tile cache: %s", root.c_str());
+    refresh_usage();
+    cleanup_pending.store(true);
+}
+
 std::string tile_path(uint8_t z, uint32_t x, uint32_t y) {
+    std::string root = tiles_dir();
+    if (root.empty()) return "";
     char b[64];
-    snprintf(b, sizeof b, "%s/%u/%lu/%lu.swt", kMapsDir, z, (unsigned long)x, (unsigned long)y);
+    snprintf(b, sizeof b, "%s/%u/%lu/%lu.swt", root.c_str(), z, (unsigned long)x, (unsigned long)y);
     return b;
 }
 
 bool tile_read(uint8_t z, uint32_t x, uint32_t y, std::vector<uint8_t>& out) {
-    if (!mounted()) return false;
-    if (!read_file(tile_path(z, x, y), out, 512 * 1024)) return false;
+    std::string p = tile_path(z, x, y);
+    if (!mounted() || p.empty()) return false;
+    if (!read_file(p, out, 512 * 1024)) return false;
     std::lock_guard<std::mutex> g(mu);
     if (lru && lru->touch(block_key(z, x, y), ++access_clock)) lru_dirty = true;
     return true;
 }
 
+bool tile_exists(uint8_t z, uint32_t x, uint32_t y) {
+    struct stat st;
+    std::string p = tile_path(z, x, y);
+    return mounted() && !p.empty() && stat(p.c_str(), &st) == 0;
+}
+
 bool tile_write(uint8_t z, uint32_t x, uint32_t y, const std::vector<uint8_t>& data) {
-    if (!mounted() || !lru) return false;
+    std::lock_guard<std::mutex> io(tile_io);
+    std::string root = tiles_dir();
+    if (!mounted() || !lru || root.empty()) return false;
     {
         std::lock_guard<std::mutex> g(mu);
         // Category quota (4 GB, LRU with hysteresis) ...
-        for (auto& k : lru->plan_eviction(data.size())) evict_block(k);
+        for (auto& k : lru->plan_eviction(on_card(data.size()))) evict_block(k);
         // ... and the card-wide free-space reserve shared with music.
         if (inf.free < data.size() + ccore::kMinFreeReserve) {
             uint64_t need = data.size() + ccore::kMinFreeReserve - inf.free;
@@ -378,27 +473,40 @@ bool tile_write(uint8_t z, uint32_t x, uint32_t y, const std::vector<uint8_t>& d
         }
     }
     char dir[48];
-    snprintf(dir, sizeof dir, "%s/%u", kMapsDir, z);
-    ensure_dir(dir);
-    snprintf(dir, sizeof dir, "%s/%u/%lu", kMapsDir, z, (unsigned long)x);
-    ensure_dir(dir);
+    snprintf(dir, sizeof dir, "%s/%u/%lu", root.c_str(), z, (unsigned long)x);
+    static std::string last_dir;  // consecutive tiles mostly share a column directory
+    auto make_dirs = [&] {
+        char zdir[24];
+        snprintf(zdir, sizeof zdir, "%s/%u", root.c_str(), z);
+        ensure_dir(zdir);
+        ensure_dir(dir);
+        last_dir = dir;
+    };
+    if (last_dir != dir) make_dirs();
     std::string p = tile_path(z, x, y);
     uint64_t old = file_size(p);
-    if (!write_file_atomic(p, data.data(), data.size())) return false;
+    old = old ? on_card(old) : 0;
+    // Cache data: fclose() commits the FatFs file, no extra fsync; a torn tile fails the SWT check.
+    bool ok = write_file_atomic(p, data.data(), data.size(), false);
+    if (!ok) {  // the directory may have been evicted since it was cached
+        make_dirs();
+        ok = write_file_atomic(p, data.data(), data.size(), false);
+    }
+    if (!ok) return false;
     std::lock_guard<std::mutex> g(mu);
-    lru->add(block_key(z, x, y), static_cast<int64_t>(data.size()) - static_cast<int64_t>(old), ++access_clock);
-    lru_dirty = true;
+    lru->add(block_key(z, x, y), static_cast<int64_t>(on_card(data.size())) - static_cast<int64_t>(old), ++access_clock);
+    lru_dirty = lru_sizes_dirty = true;
     if (inf.free > data.size()) inf.free -= data.size();
     return true;
 }
 
-bool write_file_atomic(const std::string& path, const uint8_t* data, size_t len) {
+bool write_file_atomic(const std::string& path, const uint8_t* data, size_t len, bool sync) {
     std::string tmp = path + ".tmp";
     FILE* f = fopen(tmp.c_str(), "wb");
     if (!f) return false;
     bool ok = fwrite(data, 1, len, f) == len;
     ok = (fflush(f) == 0) && ok;
-    ok = (fsync(fileno(f)) == 0) && ok;
+    if (sync) ok = (fsync(fileno(f)) == 0) && ok;
     fclose(f);
     if (!ok) {
         unlink(tmp.c_str());
@@ -435,16 +543,19 @@ uint64_t file_size(const std::string& path) {
 
 void flush_index() {
     std::vector<uint8_t> blob;
+    std::string path;
     {
         std::lock_guard<std::mutex> g(mu);
         int64_t now = esp_timer_get_time();
-        // At most every 15 minutes: the index is advisory (rebuilt from the tree if lost),
-        // so access-order updates are not written to the card on every tile read.
-        if (!lru || !lru_dirty || now - lru_saved_us < 15LL * 60 * 1000000) return;
-        lru_dirty = false;
+        if (tiles_root.empty()) return;
+        path = tiles_root + "/lru.idx";
+        // New or evicted tiles are saved on the next pass (storage task: every minute); mere
+        // access-order updates at most every 15 minutes, so tile reads don't write the card.
+        if (!lru || !lru_dirty || (!lru_sizes_dirty && now - lru_saved_us < 15LL * 60 * 1000000)) return;
+        lru_dirty = lru_sizes_dirty = false;
         lru_saved_us = now;
         swp::Writer w(blob);
-        w.u8(1);
+        w.u8(2);
         w.u64(access_clock);
         w.u32(static_cast<uint32_t>(lru->entries().size()));
         for (auto& e : lru->entries()) {
@@ -453,7 +564,7 @@ void flush_index() {
             w.u64(e.last_access);
         }
     }
-    if (!write_file_atomic(kIndexPath, blob.data(), blob.size())) ESP_LOGW(TAG, "failed to persist map cache index");
+    if (!write_file_atomic(path, blob.data(), blob.size())) ESP_LOGW(TAG, "failed to persist map cache index");
 }
 
 }  // namespace storage

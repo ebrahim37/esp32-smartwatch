@@ -2,9 +2,9 @@
 //
 // Security: LE Secure Connections with MITM protection and bonding. The companion has no
 // display, so it uses a static 6-digit passkey (printed on the serial console at boot and
-// stored in the cfg partition). New pairings are only accepted inside a pairing window
-// (CONFIG_COMPANION_PAIRING_WINDOW_S after boot, re-opened by pressing BOOT); bonded peers
-// reconnect at any time. Every SWP characteristic requires an authenticated link.
+// stored in the cfg partition). New pairings are accepted while nothing is bonded, and for
+// CONFIG_COMPANION_PAIRING_WINDOW_S after boot; the watch's Forget sends Unpair, which
+// removes the bonds. Bonded peers reconnect at any time. Every SWP characteristic requires an authenticated link.
 #pragma once
 
 #include <cstdint>
@@ -44,6 +44,7 @@ int queued(uint16_t conn_id);
 void set_role(uint16_t conn_id, uint8_t role);
 uint8_t role(uint16_t conn_id);
 void open_pairing_window(uint32_t seconds);
-bool pairing_window_open();
+void forget_bonds();  // removes every BLE bond: the next watch can pair
+bool pairing_window_open();  // true while unpaired or inside the post-boot window
 
 }  // namespace ble_server

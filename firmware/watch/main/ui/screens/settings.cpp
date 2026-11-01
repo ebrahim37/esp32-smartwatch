@@ -459,7 +459,7 @@ private:
     };
 };
 
-// ---- Maps (offline tiles on the companion SD card, OSM data on the VPS helper) ----------
+// ---- Maps (OSM data on the VPS helper; the companion caches tiles on its SD card) --------
 
 void confirm(const char* title, const char* body, const char* action, lv_color_t colour, Fn fn) {
     lv_obj_t* m = lv_obj_create(lv_layer_top());
@@ -497,17 +497,14 @@ public:
         if (d & (app::kDirtyMapData | app::kDirtyLink | app::kDirtyPosition)) rebuild();
     }
     void populate() override {
-        bool ready, have_pos, have_sync, have_data;
+        bool ready, have_pos, have_data;
         swp::Position pos;
-        swp::MapSyncStatus sync;
         swp::MapDataStatus data;
         {
             app::Locked s;
             ready = s->link.state == app::LinkState::Ready;
             have_pos = s->position_valid;
             pos = s->position;
-            have_sync = s->map_sync_valid;
-            sync = s->map_sync;
             have_data = s->map_data_valid;
             data = s->map_data;
         }
@@ -515,21 +512,7 @@ public:
             section_header(c_, "Companion not connected");
             return;
         }
-        section_header(c_, "Offline maps on the companion");
-        static const char* kSync[] = {"Not started", "Downloading", "Done", "Failed", "Map data being prepared"};
-        std::string sub = have_sync ? sync.message : "Tiles within 3 km, zoom 12-17";
-        std::string val = have_sync ? (std::to_string(sync.done) + " tiles, " + std::to_string(sync.kbytes / 1024) + " MB") : "";
-        list_row(c_, have_sync ? kSync[sync.state % 5] : "Download maps around me", sub.c_str(), val.empty() ? nullptr : val.c_str(),
-                 [have_pos, pos] {
-                     if (!have_pos) return toast("Location not available yet");
-                     swp::MapSyncRequest r;
-                     r.lat_e7 = pos.lat_e7;
-                     r.lon_e7 = pos.lon_e7;
-                     swlink::send(r);
-                     toast("Offline map download started");
-                 },
-                 color::green(), LV_SYMBOL_DOWNLOAD);
-
+        section_header(c_, "The companion keeps the area around you and every viewed tile on its SD card, for offline use.");
         section_header(c_, "OSM data on the server");
         std::string st = !have_data ? "..." : !data.building.empty() ? "Building " + data.building : data.active.empty() ? "None yet" : data.active;
         list_row(c_, "Current area", have_data && !data.error.empty() ? data.error.c_str() : nullptr, st.c_str(), [] {
@@ -704,7 +687,7 @@ public:
         list_row(c_, "Connections", "Companion, phone, AirPods, Wi-Fi", nullptr, [] { push(new ConnectionsScreen()); }, color::blue(), LV_SYMBOL_BLUETOOTH);
         list_row(c_, "Notifications", st.ntfy_enabled ? "ntfy topics" : "Off", nullptr, [] { push(new NotificationSettingsScreen()); },
                  color::purple(), LV_SYMBOL_BELL);
-        list_row(c_, "Maps", "Offline maps, OSM data", nullptr, [] { push(new MapsSettingsScreen()); }, color::green(), LV_SYMBOL_GPS);
+        list_row(c_, "Maps", "OSM data on the server", nullptr, [] { push(new MapsSettingsScreen()); }, color::green(), LV_SYMBOL_GPS);
         list_row(c_, "Server", "Helper, ntfy, Navidrome", nullptr, [] { push(new ServerSettingsScreen()); }, color::card2(), LV_SYMBOL_SETTINGS);
         switch_row(c_, "Vibration", st.vibration_enabled, [](bool on) {
             auto s = settings::get();

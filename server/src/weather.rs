@@ -24,6 +24,7 @@ pub struct Precip {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Day {
+    /// The forecast's local calendar day as UTC midnight of that date (format it in UTC).
     pub date: i64,
     pub code: u8,
     pub low_c: f64,
@@ -107,6 +108,8 @@ struct Daily {
 
 #[derive(Debug, Deserialize)]
 pub struct OpenMeteo {
+    #[serde(default)]
+    utc_offset_seconds: i64,
     current: Current,
     #[serde(default)]
     hourly: Series,
@@ -188,7 +191,10 @@ pub fn summarize(raw: &OpenMeteo, now: i64) -> Summary {
     let d = &raw.daily;
     let days: Vec<Day> = (0..d.time.len().min(7))
         .map(|i| Day {
-            date: d.time[i],
+            // Open-Meteo gives local midnight as a Unix time using today's UTC offset, so a
+            // DST change mid-week would shift later days into the previous date if formatted
+            // in local time; send the calendar date instead.
+            date: (d.time[i] + raw.utc_offset_seconds).div_euclid(86_400) * 86_400,
             code: at(&d.weather_code, i).unwrap_or(0),
             low_c: at(&d.temperature_2m_min, i).unwrap_or(f64::NAN),
             high_c: at(&d.temperature_2m_max, i).unwrap_or(f64::NAN),
@@ -304,6 +310,7 @@ mod tests {
             }
         }
         OpenMeteo {
+            utc_offset_seconds: 0,
             current: Current { time: now, temperature_2m: 10.3, weather_code: 63, wind_speed_10m: 13.2, uv_index: Some(6.0) },
             hourly: h,
             minutely_15: m,
@@ -348,4 +355,27 @@ mod tests {
         let s = summarize(&fixture(Some(0), None, false), 1_761_840_000 + 300);
         assert_eq!(s.precip.in_minutes, Some(0));
     }
+
+    #[test]
+    fn daily_dates_are_local_calendar_days_across_dst() {
+        // Toronto on the morning DST ends: Open-Meteo returns local midnights at the current
+        // offset (EDT, -4 h) for every day.
+        let mut raw = fixture(None, None, false);
+        raw.utc_offset_seconds = -14_400;
+        raw.daily.time = vec![1_793_505_600, 1_793_592_000];
+        raw.daily.weather_code.resize(2, Some(0));
+        for v in [
+            &mut raw.daily.temperature_2m_max,
+            &mut raw.daily.temperature_2m_min,
+            &mut raw.daily.precipitation_probability_max,
+            &mut raw.daily.precipitation_sum,
+            &mut raw.daily.uv_index_max,
+        ] {
+            v.resize(2, Some(0.0));
+        }
+        let s = summarize(&raw, 1_793_508_300);
+        assert_eq!(s.days[0].date, 1_793_491_200); // 2026-11-01 00:00 UTC
+        assert_eq!(s.days[1].date, 1_793_577_600); // 2026-11-02 00:00 UTC
+    }
+
 }

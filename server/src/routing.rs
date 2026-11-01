@@ -89,6 +89,11 @@ fn instruction(m: &Value, name: &str) -> String {
     }
 }
 
+/// Long routes (100+ km) keep enough shape and every turn; the companion sends large routes
+/// to the watch as a bulk transfer.
+pub const MAX_POINTS: usize = 1000;
+pub const MAX_STEPS: usize = 100;
+
 pub fn parse_osrm(body: &Value) -> AppResult<Route> {
     if body.get("code").and_then(|c| c.as_str()) != Some("Ok") {
         return Ok(Route { status: "not_found", distance_m: 0, duration_s: 0, points: vec![], steps: vec![] });
@@ -101,7 +106,7 @@ pub fn parse_osrm(body: &Value) -> AppResult<Route> {
         .flatten()
         .filter_map(|p| Some((p.get(1)?.as_f64()?, p.get(0)?.as_f64()?)))
         .collect();
-    let simplified = simplify_to(&coords, 200);
+    let simplified = simplify_to(&coords, MAX_POINTS);
     let nearest = |lat: f64, lon: f64| {
         simplified
             .iter()
@@ -124,7 +129,7 @@ pub fn parse_osrm(body: &Value) -> AppResult<Route> {
             });
         }
     }
-    steps.truncate(24);
+    steps.truncate(MAX_STEPS);
     Ok(Route {
         status: "ok",
         distance_m: r.get("distance").and_then(|d| d.as_f64()).unwrap_or(0.0).round() as u32,
@@ -140,6 +145,19 @@ pub struct Osrm {
     pub base: String,
     /// Per-profile base URLs (foot, bicycle, driving) that take precedence over `base`.
     pub per_profile: [String; 3],
+    /// Minimum spacing between requests (public servers' usage policies).
+    pub min_interval: Option<std::time::Duration>,
+    pub last: tokio::sync::Mutex<Option<std::time::Instant>>,
+}
+
+impl Osrm {
+    pub fn new(http: reqwest::Client, base: String, per_profile: [String; 3], min_interval: Option<std::time::Duration>) -> Self {
+        Self { http, base, per_profile, min_interval, last: Default::default() }
+    }
+
+    pub fn configured(&self) -> bool {
+        !self.base.is_empty() || self.per_profile.iter().any(|u| !u.is_empty())
+    }
 }
 
 impl Osrm {
@@ -160,6 +178,13 @@ impl Router for Osrm {
     fn route<'a>(&'a self, from: (f64, f64), to: (f64, f64), mode: Mode) -> BoxFut<'a, AppResult<Route>> {
         Box::pin(async move {
             let Some(prefix) = self.prefix(mode) else { return Err(AppError::NotConfigured("OSRM_URL")) };
+            if let Some(gap) = self.min_interval {
+                let mut last = self.last.lock().await;
+                if let Some(t) = *last {
+                    tokio::time::sleep(gap.saturating_sub(t.elapsed())).await;
+                }
+                *last = Some(std::time::Instant::now());
+            }
             let url = format!("{prefix}/{},{};{},{}?overview=full&geometries=geojson&steps=true", from.1, from.0, to.1, to.0);
             let body: Value = self.http.get(url).send().await?.json().await?;
             parse_osrm(&body)
@@ -200,14 +225,15 @@ mod tests {
 
     #[test]
     fn per_profile_urls_override_base() {
-        let o = Osrm {
-            http: reqwest::Client::new(),
-            base: "https://o/{profile}".into(),
-            per_profile: ["http://127.0.0.1:5001".into(), String::new(), String::new()],
-        };
+        let o = Osrm::new(
+            reqwest::Client::new(),
+            "https://o/{profile}".into(),
+            ["http://127.0.0.1:5001".into(), String::new(), String::new()],
+            None,
+        );
         assert_eq!(o.prefix(Mode::Walk).unwrap(), "http://127.0.0.1:5001/route/v1/foot");
         assert_eq!(o.prefix(Mode::Drive).unwrap(), "https://o/driving");
-        let none = Osrm { http: reqwest::Client::new(), base: String::new(), per_profile: Default::default() };
+        let none = Osrm::new(reqwest::Client::new(), String::new(), Default::default(), None);
         assert!(none.prefix(Mode::Bike).is_none());
     }
 }

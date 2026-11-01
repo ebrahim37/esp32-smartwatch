@@ -8,6 +8,7 @@
 //! ```text
 //! extracts/<geofabrik-id>.osm.pbf     downloaded extracts            (evictable)
 //! areas/<area-id>/                    region.osm.pbf, tiles.mbtiles,  (evictable, not the active one)
+//!                                     pois.json (search index),
 //!                                     osrm/{foot,bicycle,car}/region.osrm*
 //! sources/                            Planetiler water/Natural Earth inputs (kept)
 //! active -> areas/<area-id>           switched atomically; the servers reload when it changes
@@ -27,6 +28,8 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::{io::AsyncWriteExt, process::Command};
+
+use crate::poi::PoiIndex;
 
 const INDEX_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 3600);
 const PROFILES: [&str; 3] = ["foot", "bicycle", "car"];
@@ -222,6 +225,34 @@ struct State {
     active: Option<Area>,
     building: Option<Area>,
     last_error: Option<String>,
+    /// Search index of the active area (area id), loaded or built in the background.
+    pois: Option<(String, Arc<PoiIndex>)>,
+    pois_loading: bool,
+}
+
+/// Extracts named POIs from an area clip into `pois.json` (osmium tags-filter + export).
+async fn build_pois(dir: &Path) -> Result<PoiIndex> {
+    let tmp = dir.join("pois-work");
+    tokio::fs::create_dir_all(&tmp).await?;
+    let filtered = tmp.join("pois.osm.pbf");
+    let seq = tmp.join("pois.geojsonseq");
+    run(Command::new("osmium")
+        .args(["tags-filter", "--overwrite", "-o"])
+        .arg(&filtered)
+        .arg(dir.join("region.osm.pbf"))
+        .args(["nwr/amenity", "nwr/shop", "nwr/tourism", "nwr/leisure", "nwr/office", "nwr/craft", "nwr/healthcare", "nwr/historic"])
+        .args(["nwr/railway=station,halt", "nwr/public_transport=station", "nwr/aeroway=aerodrome", "n/place", "wr/building=train_station,hospital,stadium,university,school,church"]))
+    .await?;
+    run(Command::new("osmium").args(["export", "--overwrite", "-f", "geojsonseq", "-o"]).arg(&seq).arg(&filtered)).await?;
+    let (seq2, out) = (seq.clone(), dir.join("pois.json"));
+    let idx = tokio::task::spawn_blocking(move || -> Result<PoiIndex> {
+        let idx = PoiIndex::from_geojsonseq(&std::fs::read_to_string(&seq2)?);
+        idx.save(&out)?;
+        Ok(idx)
+    })
+    .await??;
+    tokio::fs::remove_dir_all(&tmp).await.ok();
+    Ok(idx)
 }
 
 #[derive(Clone)]
@@ -306,6 +337,41 @@ impl MapData {
             }
         });
         Coverage::Preparing
+    }
+
+    /// The active area's POI index; None (and a background load or build starts) until ready.
+    pub fn pois(&self) -> Option<Arc<PoiIndex>> {
+        let mut st = self.state.lock().unwrap();
+        let area = st.active.clone()?;
+        if let Some((id, idx)) = &st.pois {
+            if *id == area.id {
+                return Some(idx.clone());
+            }
+        }
+        if st.pois_loading {
+            return None;
+        }
+        st.pois_loading = true;
+        drop(st);
+        let me = self.clone();
+        tokio::spawn(async move {
+            let dir = me.cfg.dir.join("areas").join(&area.id);
+            let path = dir.join("pois.json");
+            let res = match tokio::task::spawn_blocking(move || PoiIndex::load(&path)).await {
+                Ok(Ok(idx)) => Ok(idx),
+                _ => build_pois(&dir).await, // areas built before the index existed
+            };
+            let mut st = me.state.lock().unwrap();
+            st.pois_loading = false;
+            match res {
+                Ok(idx) => {
+                    tracing::info!("search index for {}: {} places", area.id, idx.len());
+                    st.pois = Some((area.id, Arc::new(idx)));
+                }
+                Err(e) => tracing::warn!("search index for {}: {e:#}", area.id),
+            }
+        });
+        None
     }
 
     /// True if the point lies inside the active area at all (no margin).
@@ -425,6 +491,11 @@ impl MapData {
             run(Command::new("osrm-partition").arg(&osrm)).await?;
             run(Command::new("osrm-customize").arg(&osrm)).await?;
             tokio::fs::remove_file(dir.join("region.osm.pbf")).await.ok();
+        }
+
+        tracing::info!("building search index for {id}");
+        if let Err(e) = build_pois(&work).await {
+            tracing::warn!("search index for {id}: {e:#}"); // search falls back to Photon
         }
 
         tracing::info!("building vector tiles for {id}");

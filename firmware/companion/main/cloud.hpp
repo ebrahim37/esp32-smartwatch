@@ -1,4 +1,4 @@
-// VPS helper client (weather, maps: tiles, POI search, routing) and the notification queue
+// VPS helper client (weather, maps: tiles, POI search, routing), the watch's HTTPS proxy and the notification queue
 // towards the watch (fed by ntfy.cpp).
 // All network work runs on the cloud worker task; BLE callbacks only enqueue jobs.
 #pragma once
@@ -17,8 +17,8 @@ void on_transfer_ack(uint16_t conn, const swp::TransferAck& a);
 void request_search(uint16_t conn, const swp::MapSearchRequest& r);
 void request_route(uint16_t conn, const swp::RouteRequest& r);
 void request_weather(uint16_t conn);
-void request_map_sync(uint16_t conn, const swp::MapSyncRequest& r);   // offline tiles -> SD
 void request_map_data(uint16_t conn, const swp::MapDataCommand& c);   // helper OSM data
+void request_http(uint16_t conn, swp::HttpRequest&& r);              // generic HTTPS proxy
 
 void ingest_notification(const swp::Notification& n);  // from the ntfy stream
 void on_notification_ack(uint64_t id);
