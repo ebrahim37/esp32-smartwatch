@@ -61,7 +61,14 @@ impl AppState {
             .build()?;
         Ok(Self {
             weather: WeatherService::new(http.clone(), cfg.open_meteo_url.clone(), cfg.weather_ttl),
-            tiles: TileService::new(http.clone(), cfg.tile_url_template.clone(), cfg.tile_recolor, cfg.tile_scale, &cfg.data_dir, cfg.tile_cache_max_bytes),
+            tiles: TileService::new(
+                http.clone(),
+                cfg.tile_url_template.clone(),
+                cfg.tile_recolor,
+                cfg.tile_scale,
+                &cfg.data_dir,
+                cfg.tile_cache_max_bytes,
+            ),
             mapdata: cfg.mapdata.clone().map(|m| {
                 // Extract downloads can take a while; the shared client's 20 s timeout is per request.
                 let dl = reqwest::Client::builder().user_agent(cfg.user_agent.clone()).connect_timeout(Duration::from_secs(20)).build();
@@ -202,20 +209,21 @@ async fn bundle(State(st): State<AppState>, Query(q): Query<BundleQ>) -> AppResu
     }
     let tiles = st.tiles.clone();
     // Uncached tiles cost a render each; a few in parallel (order kept) on a multi-core host.
-    let records = futures_util::stream::iter(list).map(move |(z, x, y)| {
-        let (tiles, ns) = (tiles.clone(), ns.clone());
-        async move {
-            let Ok(swt) = tiles.get(&ns, z, x, y).await else { return Ok::<_, std::io::Error>(bytes::Bytes::new()) };
-            let mut rec = Vec::with_capacity(13 + swt.len());
-            rec.push(z);
-            rec.extend_from_slice(&x.to_le_bytes());
-            rec.extend_from_slice(&y.to_le_bytes());
-            rec.extend_from_slice(&(swt.len() as u32).to_le_bytes());
-            rec.extend_from_slice(&swt);
-            Ok(bytes::Bytes::from(rec))
-        }
-    })
-    .buffered(4);
+    let records = futures_util::stream::iter(list)
+        .map(move |(z, x, y)| {
+            let (tiles, ns) = (tiles.clone(), ns.clone());
+            async move {
+                let Ok(swt) = tiles.get(&ns, z, x, y).await else { return Ok::<_, std::io::Error>(bytes::Bytes::new()) };
+                let mut rec = Vec::with_capacity(13 + swt.len());
+                rec.push(z);
+                rec.extend_from_slice(&x.to_le_bytes());
+                rec.extend_from_slice(&y.to_le_bytes());
+                rec.extend_from_slice(&(swt.len() as u32).to_le_bytes());
+                rec.extend_from_slice(&swt);
+                Ok(bytes::Bytes::from(rec))
+            }
+        })
+        .buffered(4);
     let head = futures_util::stream::iter([Ok(bytes::Bytes::from_static(b"SWB1"))]);
     let tail = futures_util::stream::iter([Ok(bytes::Bytes::from_static(&[0xFF]))]);
     let body = axum::body::Body::from_stream(head.chain(records).chain(tail));
@@ -260,8 +268,11 @@ async fn search(State(st): State<AppState>, Query(q): Query<SearchQ>) -> AppResu
     let limit = q.limit.clamp(1, 20);
     // The active area's local index answers in milliseconds; Photon/Overpass cover the rest.
     let local = st.mapdata.as_ref().filter(|md| md.covers(q.lat, q.lon)).and_then(|md| md.pois());
+    let nearby = q.q.trim().is_empty();
+    let fallback = if nearby { local.is_none() } else { true };
     let mut places = local.map(|idx| idx.search(&q.q, q.lat, q.lon, limit)).unwrap_or_default();
-    if places.len() < 3 && (!q.q.trim().is_empty() || places.is_empty()) {
+    // The local index is authoritative for "Nearby"; public Overpass is slow and often busy.
+    if fallback && places.len() < 3 {
         if let Ok(more) = st.places.search(&q.q, q.lat, q.lon, limit).await {
             for p in more {
                 if places.len() >= limit {

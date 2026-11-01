@@ -377,5 +377,4 @@ mod tests {
         assert_eq!(s.days[0].date, 1_793_491_200); // 2026-11-01 00:00 UTC
         assert_eq!(s.days[1].date, 1_793_577_600); // 2026-11-02 00:00 UTC
     }
-
 }

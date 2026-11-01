@@ -241,7 +241,13 @@ async fn build_pois(dir: &Path) -> Result<PoiIndex> {
         .arg(&filtered)
         .arg(dir.join("region.osm.pbf"))
         .args(["nwr/amenity", "nwr/shop", "nwr/tourism", "nwr/leisure", "nwr/office", "nwr/craft", "nwr/healthcare", "nwr/historic"])
-        .args(["nwr/railway=station,halt", "nwr/public_transport=station", "nwr/aeroway=aerodrome", "n/place", "wr/building=train_station,hospital,stadium,university,school,church"]))
+        .args([
+            "nwr/railway=station,halt",
+            "nwr/public_transport=station",
+            "nwr/aeroway=aerodrome",
+            "n/place",
+            "wr/building=train_station,hospital,stadium,university,school,church",
+        ]))
     .await?;
     run(Command::new("osmium").args(["export", "--overwrite", "-f", "geojsonseq", "-o"]).arg(&seq).arg(&filtered)).await?;
     let (seq2, out) = (seq.clone(), dir.join("pois.json"));

@@ -115,10 +115,19 @@ impl PoiSearch for OsmSearch {
                     return Err(AppError::NotConfigured("OVERPASS_URL"));
                 }
                 let q = format!(
-                    "[out:json][timeout:10];(nwr(around:600,{lat},{lon})[name][amenity];nwr(around:600,{lat},{lon})[name][shop];);out center {};",
+                    "[out:json][timeout:6];(nwr(around:600,{lat},{lon})[name][amenity];nwr(around:600,{lat},{lon})[name][shop];);out center {};",
                     limit * 3
                 );
-                let body: Value = self.http.post(&self.overpass_url).form(&[("data", q)]).send().await?.error_for_status()?.json().await?;
+                let body: Value = self
+                    .http
+                    .post(&self.overpass_url)
+                    .timeout(std::time::Duration::from_secs(8))
+                    .form(&[("data", q)])
+                    .send()
+                    .await?
+                    .error_for_status()?
+                    .json()
+                    .await?;
                 let mut v = parse_overpass(&body, lat, lon);
                 v.truncate(limit);
                 Ok(v)

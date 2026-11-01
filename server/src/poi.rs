@@ -165,7 +165,9 @@ impl PoiIndex {
         let mut hits: Vec<(f64, &Poi, f64)> = Vec::new();
         for p in &self.pois {
             let in_category = || {
-                words.iter().all(|w| p.keys.contains(w) || SYNONYMS.iter().any(|(s, alts)| s == w && alts.iter().any(|a| p.keys.contains(a))))
+                words
+                    .iter()
+                    .all(|w| p.keys.contains(w) || SYNONYMS.iter().any(|(s, alts)| s == w && alts.iter().any(|a| p.keys.contains(a))))
             };
             let factor = if words.is_empty() {
                 1.0
@@ -232,12 +234,20 @@ mod tests {
 
     fn index() -> PoiIndex {
         let mut s = String::new();
-        s += &feature("Starbucks", json!({"amenity": "cafe", "brand": "Starbucks", "addr:street": "Yonge Street", "addr:housenumber": "5000"}), 43.781, -79.411);
+        s += &feature(
+            "Starbucks",
+            json!({"amenity": "cafe", "brand": "Starbucks", "addr:street": "Yonge Street", "addr:housenumber": "5000"}),
+            43.781,
+            -79.411,
+        );
         s += &feature("Coffee Time", json!({"amenity": "cafe"}), 43.83, -79.41);
         s += &feature("Petro-Canada", json!({"amenity": "fuel"}), 43.79, -79.42);
         s += &feature("Yorkdale Shopping Centre", json!({"shop": "mall"}), 43.725, -79.452);
         s += &feature("Pizza Nova", json!({"amenity": "restaurant", "cuisine": "pizza"}), 43.782, -79.412);
-        s += &format!("\x1e{}\n", json!({"type": "Feature", "geometry": {"type": "Point", "coordinates": [-79.41, 43.78]}, "properties": {"amenity": "bench"}}));
+        s += &format!(
+            "\x1e{}\n",
+            json!({"type": "Feature", "geometry": {"type": "Point", "coordinates": [-79.41, 43.78]}, "properties": {"amenity": "bench"}})
+        );
         PoiIndex::from_geojsonseq(&s)
     }
 

@@ -347,5 +347,4 @@ mod tests {
         assert_ne!(px(3), px(0));
         assert_eq!(px(1), px(0));
     }
-
 }

@@ -19,7 +19,7 @@ Data sources (pick services whose terms allow your use; self-hosting is recommen
 | Weather | Open-Meteo forecast API | cached 15 min per ~1 km cell |
 | Tiles | `TILE_URL_TEMPLATE` (required) | must be self-hosted or a provider permitting caching; `tile.openstreetmap.org` is refused; rendered at 2x from the zoom-1 tile (`TILE_SCALE`) |
 | Search | local index of the map area (below), then Photon | Photon fills in outside the area or when there are fewer than 3 local matches |
-| Nearby POIs | local index (named places within 1 km), then Overpass | light use only on the public Overpass instance |
+| Nearby POIs | local index (named places within 1 km); Overpass only while the index is unavailable | 8 s limit; light use only on the public Overpass instance |
 | Routing | OSRM (`OSRM_URL`, `{profile}` placeholder supported) | self-host per profile (foot/bicycle/driving) |
 | Long routes | FOSSGIS OSRM (`routing.openstreetmap.de`) | destinations outside the local area; ≤1 request/s, light use; `ROUTE_FALLBACK=off` disables |
 
