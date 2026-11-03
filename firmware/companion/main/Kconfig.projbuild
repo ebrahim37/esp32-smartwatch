@@ -1,14 +1,5 @@
 menu "Companion"
 
-config PROTOTYPE_PLAYLIST_ID
-    string "PROTOTYPE_PLAYLIST_ID: Navidrome playlist to synchronise"
-    default ""
-    help
-        TODO(PROTOTYPE): the prototype synchronises exactly one Navidrome playlist. This is the
-        build-time default for the `nd_playlist` configuration key, which can be changed at
-        runtime (watch Settings or the LAN settings page) without reflashing. Production firmware will
-        sync a user-selected set of playlists.
-
 config COMPANION_PAIRING_WINDOW_S
     int "Seconds after boot during which new BLE pairings are accepted even when already paired"
     default 300

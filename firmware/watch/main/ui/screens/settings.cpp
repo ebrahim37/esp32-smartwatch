@@ -414,7 +414,8 @@ public:
             for (auto& x : vals)
                 if (x.key == f.key) v = x;
             if (v.status) {
-                toast(std::string(f.title) + ": value rejected" + (f.https ? " (must start with https://)" : ""));
+                const char* hint = std::strcmp(f.key, "nd_url") == 0 ? " (https:// or http://<LAN IP>)" : f.https ? " (must start with https://)" : "";
+                toast(std::string(f.title) + ": value rejected" + hint);
             }
             std::string sub = f.secret ? (v.is_set ? "Saved (hidden)" : "Not set") : (v.value.empty() ? "Not set" : v.value);
             const Field* fp = &f;
@@ -453,9 +454,6 @@ private:
         {"Music (Navidrome)", "nd_url", "Navidrome URL", false, true, 128},
         {"Music (Navidrome)", "nd_user", "User", false, false, 64},
         {"Music (Navidrome)", "nd_pass", "Password", true, false, 128},
-        {"Music (Navidrome)", "nd_hdr", "Proxy header name", false, false, 64},
-        {"Music (Navidrome)", "nd_hdr_val", "Proxy header value", true, false, 256},
-        {"Music (Navidrome)", "nd_playlist", "Playlist ID", false, false, 64},
     };
 };
 
@@ -702,6 +700,10 @@ public:
             board::set_brightness(s.brightness);
             app::mark(app::kDirtySettings);
         }, color::yellow(), LV_SYMBOL_EYE_OPEN);
+        list_row(c_, "Passcode", settings::lock_pin().empty() ? "Off" : "On", nullptr, [] { push(make_passcode_settings()); }, color::blue(),
+                 UI_SYMBOL_LOCK);
+        // For measuring the panel's visible area (rounded corners, bezel).
+        list_row(c_, "Display geometry", "Test patterns", nullptr, [] { push(make_geometry_test()); }, color::card2(), LV_SYMBOL_IMAGE);
         list_row(c_, "Time zone", st.posix_tz.c_str(), nullptr, [] {
             KeyboardOpts o;
             o.label = "POSIX TZ, e.g. EST5EDT,M3.2.0,M11.1.0";

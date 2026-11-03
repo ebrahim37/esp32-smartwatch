@@ -20,7 +20,9 @@ std::string fmt_clock(const struct tm& lt, bool h24);
 
 // Precipitation outlook from minutes-until value: "no precipitation", "rain now",
 // "rain in 25 min", "snow in 4 hrs", "precip. unknown".
+// "Rain in 6 hrs", "Snow in 20 min", "Rain now", "Clear for 24 hrs" (nothing within the horizon).
 std::string fmt_precip(uint8_t kind, int32_t minutes, uint8_t horizon_h);
+std::string fmt_hour12(int hour);  // 23 -> "11 PM", 0 -> "12 AM"
 
 // Level buckets used to colour home-screen values.
 enum class Level : uint8_t { Good, Moderate, High, Severe, Unknown };

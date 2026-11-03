@@ -23,6 +23,10 @@ swp::NetProvider provider();
 void reconfigure();           // apply new SSID/password immediately
 bool time_synced();
 void set_server_ok(bool ok);  // updated by the cloud client
+// Internet reachability as actually used: any HTTPS response (VPS helper, ntfy, ...) or SNTP
+// sync marks it; LAN HTTP (Navidrome at home) does not. Shown as NET on the watch face.
+void mark_internet();
+uint32_t internet_age_s();  // seconds since the last mark; UINT32_MAX if never
 
 using Listener = void (*)(bool online);
 void add_listener(Listener l);

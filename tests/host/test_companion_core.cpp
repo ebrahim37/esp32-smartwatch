@@ -145,6 +145,32 @@ TEST(sync_plan_redownloads_size_mismatch) {
     CHECK_EQ(p.download.size(), 1u);
 }
 
+TEST(sync_plan_unknown_size_uses_budget) {
+    // Transcoded tracks: size unknown (0), budget estimate for the quota.
+    std::vector<RemoteTrack> pl = {{"a1", "mp3", 0, 400}, {"b2", "mp3", 0, 400}, {"c3", "mp3", 0, 400}};
+    std::vector<LocalFile> local = {{"a1", "mp3", 380, false}, {"b2", "mp3", 100, true}};
+    auto p = plan_sync(pl, local, 1000);
+    CHECK_EQ(p.keep.size(), 1u);      // any complete file is accepted
+    CHECK_EQ(p.resume.size(), 0u);    // can't resume an unknown size
+    CHECK_EQ(p.download.size(), 1u);  // b2 starts over
+    CHECK_EQ(p.download[0], std::string("b2"));
+    CHECK_EQ(p.over_quota.size(), 1u);  // c3: 3 x 400 > 1000
+    CHECK_EQ(p.bytes_needed, 400u);
+}
+
+TEST(lan_http_url_only_private_ipv4) {
+    CHECK(lan_http_url("http://192.168.1.2:4533"));
+    CHECK(lan_http_url("http://10.0.0.5/rest/ping"));
+    CHECK(lan_http_url("http://172.20.1.1:80"));
+    CHECK(!lan_http_url("http://172.32.1.1"));
+    CHECK(!lan_http_url("http://8.8.8.8"));
+    CHECK(!lan_http_url("http://example.com"));
+    CHECK(!lan_http_url("http://192.168.1.2.evil.com"));
+    CHECK(!lan_http_url("http://192.168.1"));
+    CHECK(!lan_http_url("https://192.168.1.2"));
+    CHECK(!lan_http_url("http://192.168.1.256"));
+}
+
 TEST(md5_and_subsonic_token) {
     CHECK_EQ(md5_hex(""), std::string("d41d8cd98f00b204e9800998ecf8427e"));
     CHECK_EQ(md5_hex("The quick brown fox jumps over the lazy dog"), std::string("9e107d9d372bb6826bd81d3542a419d6"));
@@ -206,6 +232,35 @@ TEST(play_queue_shuffle_is_permutation_starting_with_selection) {
     int cur = q.current();
     q.set_shuffle(false, 0);
     CHECK_EQ(q.current(), cur);  // un-shuffling keeps the playing track
+}
+
+TEST(play_queue_upcoming_follows_next) {
+    PlayQueue q;
+    q.load(6, 3, false, 0);
+    auto up = q.upcoming(4);
+    CHECK_EQ(up.size(), 2u);  // repeat off: only what is left
+    CHECK_EQ(up[0], 4);
+    CHECK_EQ(up[1], 5);
+    q.set_repeat(Repeat::All);
+    up = q.upcoming(4);
+    CHECK_EQ(up.size(), 4u);
+    CHECK_EQ(up[2], 0);  // wraps
+    CHECK_EQ(up[3], 1);
+    q.set_repeat(Repeat::Off);
+    q.load(30, 0, true, 7);
+    up = q.upcoming(4);
+    for (uint16_t k : up) {
+        q.next(true);
+        CHECK_EQ(q.current(), k);
+    }
+    // Re-drawing keeps played history and the current track, permutes only the rest.
+    int cur = q.current();
+    q.reshuffle_upcoming(42);
+    CHECK_EQ(q.current(), cur);
+    std::vector<int> seen(30, 0);
+    seen[cur]++;
+    while (q.next(false)) seen[q.current()]++;
+    for (int i = 0; i < 30; ++i) CHECK(seen[i] <= 1);
 }
 
 TEST(pcm_passthrough_and_mono_upmix) {

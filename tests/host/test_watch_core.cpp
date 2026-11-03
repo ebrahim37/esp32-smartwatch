@@ -175,10 +175,14 @@ TEST(format_helpers) {
     lt.tm_wday = 5; lt.tm_mon = 9; lt.tm_mday = 30; lt.tm_hour = 21; lt.tm_min = 8;
     CHECK_EQ(fmt_date_short(lt), std::string("Fri Oct 30"));
     CHECK_EQ(fmt_clock(lt, false), std::string("9:08"));
-    CHECK_EQ(fmt_precip(0, -1, 24), std::string("no precipitation"));
-    CHECK_EQ(fmt_precip(1, 240, 24), std::string("rain in 4 hrs"));
-    CHECK_EQ(fmt_precip(2, 20, 24), std::string("snow in 20 min"));
-    CHECK_EQ(fmt_precip(1, 0, 24), std::string("rain now"));
+    CHECK_EQ(fmt_precip(0, -1, 24), std::string("Clear for 24 hrs"));
+    CHECK_EQ(fmt_precip(0, -1, 0), std::string("No precipitation"));
+    CHECK_EQ(fmt_precip(1, 240, 24), std::string("Rain in 4 hrs"));
+    CHECK_EQ(fmt_precip(2, 20, 24), std::string("Snow in 20 min"));
+    CHECK_EQ(fmt_precip(1, 0, 24), std::string("Rain now"));
+    CHECK_EQ(fmt_hour12(23), std::string("11 PM"));
+    CHECK_EQ(fmt_hour12(0), std::string("12 AM"));
+    CHECK_EQ(fmt_hour12(12), std::string("12 PM"));
     CHECK(uv_level(6) == Level::High);
     CHECK(battery_level(33) == Level::Moderate);
     CHECK_EQ(fmt_temp(-35), std::string("-4"));

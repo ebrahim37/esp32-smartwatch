@@ -1,5 +1,6 @@
 #include "ble_server.hpp"
 
+#include <type_traits>
 #include <atomic>
 #include <cstring>
 #include <mutex>
@@ -64,6 +65,7 @@ struct TxItem {
     uint16_t conn_id;
     std::vector<uint8_t>* frame;
 };
+static_assert(std::is_trivially_copyable_v<TxItem>);  // FreeRTOS queues copy bytewise
 QueueHandle_t txq;
 std::atomic<int> queued_per_conn[kMaxSessions];
 std::atomic<uint16_t> seq{1};
@@ -313,7 +315,7 @@ void init() {
     for (auto& s : sessions) s = Session{};
     for (auto& q : queued_per_conn) q.store(0);
     txq = xQueueCreate(32, sizeof(TxItem));
-    xTaskCreatePinnedToCore(tx_task, "ble_tx", 3072, nullptr, 9, nullptr, 0);
+    xTaskCreatePinnedToCore(tx_task, "ble_tx", 2560, nullptr, 9, nullptr, 0);  // ~0.9 KB used
 
     esp_ble_gap_register_callback(gap_cb);
     esp_ble_gatts_register_callback(gatts_cb);

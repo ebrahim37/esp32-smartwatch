@@ -1,5 +1,6 @@
 #include "cloud.hpp"
 
+#include <type_traits>
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -53,6 +54,7 @@ struct Job {
     uint8_t limit;
 };
 
+static_assert(std::is_trivially_copyable_v<Job>);  // FreeRTOS queues copy bytewise
 QueueHandle_t jobs;
 TaskHandle_t worker = nullptr;
 TaskHandle_t xfer_task_handle = nullptr;
@@ -757,8 +759,8 @@ void on_net(bool online) {
 void start() {
     jobs = xQueueCreate(16, sizeof(Job));
     net::add_listener(on_net);
-    xTaskCreatePinnedToCore(worker_task, "cloud", 8192, nullptr, 4, &worker, 0);
-    xTaskCreatePinnedToCore(xfer_task, "xfer", 3072, nullptr, 5, &xfer_task_handle, 0);
+    xTaskCreatePinnedToCore(worker_task, "cloud", 6656, nullptr, 4, &worker, 0);  // ~4.4 KB used (TLS handshake)
+    xTaskCreatePinnedToCore(xfer_task, "xfer", 2560, nullptr, 5, &xfer_task_handle, 0);  // ~0.7 KB used
     xTaskCreatePinnedToCore(prefetch_task, "prefetch", 6144, nullptr, 2, nullptr, 0);
 }
 

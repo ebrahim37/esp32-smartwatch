@@ -8,7 +8,7 @@
  │   stopwatch, alarms, power              │                       │ storage: SD FAT32, quotas, tile LRU   │        │ routing (OSRM)            │
  │ swlink: framing, TX queue, transfers    │                       │ music: Navidrome sync, decoder,       │        │ map data (Geofabrik→OSRM) │
  │ board HAL: BSP display/touch, AXP2101,  │                       │   A2DP source + AVRCP ──► AirPods     │        └───────────────────────────┘
- │   QMI8658, motor                        │                       │ position: simulated (→ GNSS)          │   Navidrome (Subsonic) via Caddy
+ │   QMI8658, motor                        │                       │ position: simulated (→ GNSS)          │   Navidrome (Subsonic), LAN or Caddy
  └─────────────────────────────────────────┘                       └───────────────────────────────────────┘
                                                                      ▲  LAN settings page http://<ip>/ (5 min, opened from the watch)
 ```

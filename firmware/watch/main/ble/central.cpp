@@ -1,5 +1,6 @@
 #include "ble/central.hpp"
 
+#include <type_traits>
 #include <atomic>
 #include <cstring>
 
@@ -38,6 +39,7 @@ struct Command {
     char name[32];
 };
 
+static_assert(std::is_trivially_copyable_v<Command>);  // FreeRTOS queues copy bytewise
 QueueHandle_t cmdq = nullptr;
 uint8_t own_addr_type = BLE_OWN_ADDR_PUBLIC;
 std::atomic<bool> synced{false};

@@ -101,12 +101,13 @@ bool stream_once(const std::string& url, const std::string& token) {
     esp_http_client_handle_t c = esp_http_client_init(&cfg);
     if (!c) return false;
     esp_http_client_set_header(c, "User-Agent", "sw-companion/0.1");
-    if (!token.empty()) esp_http_client_set_header(c, "Auth", token.c_str());
+    if (!token.empty()) esp_http_client_set_header(c, "auth", token.c_str());
     bool ok = false;
     if (esp_http_client_open(c, 0) == ESP_OK && esp_http_client_fetch_headers(c) >= 0) {
         int status = esp_http_client_get_status_code(c);
         if (status == 200) {
             ok = true;
+            net::mark_internet();
             is_connected.store(true);
             ESP_LOGI(TAG, "subscribed");
             ccore::ntfy::LineSplitter lines;
@@ -124,6 +125,7 @@ bool stream_once(const std::string& url, const std::string& token) {
                 }
                 if (n < 0) break;
                 last_rx = esp_timer_get_time();
+                net::mark_internet();  // message or keepalive (~45 s) over the TLS stream
                 lines.feed(buf, static_cast<size_t>(n), on_line);
             }
         } else {

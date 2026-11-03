@@ -178,6 +178,7 @@ void update_brightness() {
     if (want_dim != dimmed) {
         dimmed = want_dim;
         board::set_brightness(want_dim ? st.dim_brightness : st.brightness);
+        if (Screen* s = current()) s->on_dim(want_dim);
     }
 }
 
@@ -220,6 +221,7 @@ void init() {
     lv_screen_load(home->scr);
     ui_timer = lv_timer_create(ui_timer_cb, 100, nullptr);
     board::set_brightness(settings::get().brightness);
+    if (settings::locked()) show_lock_overlay();  // locked before the last power-off
     ESP_LOGI(TAG, "UI ready");
 }
 
@@ -300,6 +302,20 @@ lv_obj_t* round_button(lv_obj_t* parent, const char* symbol, lv_color_t bg, int 
     lv_obj_set_ext_click_area(b, 8);
     return b;
 }
+
+static lv_obj_t* divider(lv_obj_t* parent, int w, int h) {
+    lv_obj_t* d = lv_obj_create(parent);
+    lv_obj_remove_style_all(d);
+    lv_obj_set_size(d, w, h);
+    lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(d, lv_color_hex(0x636366), 0);
+    lv_obj_set_style_radius(d, 1, 0);
+    lv_obj_remove_flag(d, (lv_obj_flag_t)(LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
+    return d;
+}
+
+lv_obj_t* vdivider(lv_obj_t* parent, int height) { return divider(parent, 2, height); }
+lv_obj_t* hdivider(lv_obj_t* parent, int width) { return divider(parent, width, 2); }
 
 lv_obj_t* card(lv_obj_t* parent) {
     lv_obj_t* c = lv_obj_create(parent);

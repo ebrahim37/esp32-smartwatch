@@ -65,6 +65,7 @@ swp::CompanionStatus companion_status() {
     s.psram_free = static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     s.notif_pending = cloud::pending_notifications();
     s.last_notif_poll = ntfy::last_event_utc();
+    s.internet_age_s = net::internet_age_s();
     return s;
 }
 

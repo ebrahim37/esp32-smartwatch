@@ -1,12 +1,10 @@
-// Navidrome (Subsonic API) synchronisation of the configured playlist to the SD card.
+// Navidrome (Subsonic API) synchronisation of the music library to the SD card.
 //
-// TODO(PROTOTYPE): exactly one playlist (config key `nd_playlist`, default
-// CONFIG_PROTOTYPE_PLAYLIST_ID) is synchronised. Production will sync a selected set.
-//
-// Files are downloaded with `download` (original file, no transcoding) to
-// /sdcard/music/.tmp/<id>.part, resumed with HTTP Range after interruptions, and renamed into
-// place only when complete. Sync runs only on home Wi-Fi and pauses while music plays so
-// SD and radio bandwidth go to audio first.
+// Every playlist's tracks are synced first, then the rest of the library (search3 with an
+// empty query) until the music quota (ccore::kMusicQuota) is used. Tracks are fetched
+// transcoded to 128 kbps MP3 into /sdcard/music/.tmp/<id>.mp3.part and renamed into place only
+// when complete. Sync runs only on home Wi-Fi and pauses while music plays so SD and radio
+// bandwidth go to audio first.
 #pragma once
 
 #include <cstdint>

@@ -5,7 +5,7 @@
 | Function | Detail |
 |----------|--------|
 | SoC | ESP32-S3R8, 8 MB octal PSRAM, 32 MB flash (configured as 16 MB, see below) |
-| Display | 2.06" 410×502 AMOLED, CO5300 over QSPI (CS 12, PCLK 11, D0–D3 4–7, RST 8) — driven by Waveshare's BSP (`esp_lcd_sh8601` compatible driver) |
+| Display | 2.06" 410×502 AMOLED, CO5300 over QSPI (CS 12, PCLK 11, D0–D3 4–7, RST 8) — panel driver from Waveshare's BSP (`esp_lcd_sh8601` compatible); LVGL renders full frames into two PSRAM buffers and `board` streams changed rows through 2 × 20 KB internal DMA buffers (40 MHz QSPI, ~23 ms per full frame); no TE sync |
 | Touch | FT3168 on I2C (INT 38, RST 9), FT5x06-compatible driver |
 | I2C | SDA 15, SCL 14 (BSP bus, 400 kHz) shared by touch, AXP2101 (0x34), QMI8658 (0x6B/0x6A) |
 | IMU | QMI8658 6-axis; sampled at 50 Hz (125 Hz ODR, ±4 g, ±512 dps) |

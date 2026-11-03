@@ -1,16 +1,21 @@
 // Board implementation: Waveshare ESP32-S3-Touch-AMOLED-2.06 (USB powered prototype).
+#include <algorithm>
 #include <atomic>
 
 #include "axp2101.hpp"
 #include "board.hpp"
 #include "bsp/display.h"
 #include "bsp/esp-bsp.h"
-#include "driver/gpio.h"
+#include "esp_lcd_touch.h"  // before bsp/touch.h and the port header, which need its types
+#include "bsp/touch.h"
 #include "esp_lvgl_port.h"
+#include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "freertos/semphr.h"
+#include "esp_heap_caps.h"
 #include "qmi8658.h"
 #include "src/display/lv_display_private.h"  // `flushing`, for the flush watchdog
 
@@ -101,6 +106,146 @@ void init_imu(i2c_master_bus_handle_t bus) {
     ESP_LOGI(TAG, "QMI8658 at 0x%02x", addr);
 }
 
+// The panel wants even-aligned areas (same rounding as the BSP's own callback).
+void rounder_cb(lv_event_t* e) {
+    auto* a = static_cast<lv_area_t*>(lv_event_get_param(e));
+    a->x1 &= ~1;
+    a->y1 &= ~1;
+    a->x2 |= 1;
+    a->y2 |= 1;
+}
+
+// Frame transfer. LVGL renders whole frames into two PSRAM frame buffers (direct mode), so the
+// panel never shows a half-drawn frame the way 50-line partial rendering did (bands appearing
+// one after another = tearing while scrolling). A finished frame's changed rows are sent by
+// `tx_task` through two small internal DMA bounce buffers (the SPI DMA can't take this PSRAM
+// buffer as is), byte-swapped for the panel on the way, while LVGL already renders the next
+// frame into the other buffer.
+constexpr int kW = BSP_LCD_H_RES, kH = BSP_LCD_V_RES;
+constexpr int kChunkRows = 24;  // even (panel needs even-aligned windows); 2 x 19.7 KB internal DMA RAM
+esp_lcd_panel_handle_t panel = nullptr;
+// esp_lcd's SPI panel IO is not thread-safe (each call collects the previous call's queued
+// transfers); tx_task and brightness commands from other tasks share it under this lock.
+SemaphoreHandle_t panel_mutex = nullptr;
+uint32_t* bounce[2] = {};
+uint32_t chunk_seq = 0;  // alternates bounce buffers across frames
+TaskHandle_t tx_task_handle = nullptr;
+struct TxJob {
+    lv_display_t* disp;
+    const uint16_t* frame;
+    int y1, y2;  // inclusive rows
+};
+QueueHandle_t tx_queue = nullptr;
+int dirty_y1 = kH, dirty_y2 = -1;
+
+void tx_task(void*) {
+    TxJob job;
+    for (;;) {
+        if (xQueueReceive(tx_queue, &job, portMAX_DELAY) != pdTRUE) continue;
+        xSemaphoreTake(panel_mutex, portMAX_DELAY);
+        for (int y = job.y1; y <= job.y2; y += kChunkRows) {
+            int rows = std::min(kChunkRows, job.y2 + 1 - y);
+            uint32_t* dst = bounce[chunk_seq++ & 1];
+            // The previous draw_bitmap waited for the chunk before it, so this buffer is free.
+            const uint32_t* src = reinterpret_cast<const uint32_t*>(job.frame + y * kW);
+            for (int i = 0, n = rows * kW / 2; i < n; ++i) {
+                uint32_t v = src[i];
+                dst[i] = ((v & 0x00FF00FFu) << 8) | ((v >> 8) & 0x00FF00FFu);  // RGB565 byte swap, two pixels
+            }
+            esp_lcd_panel_draw_bitmap(panel, 0, y, kW, y + rows, dst);
+        }
+        xSemaphoreGive(panel_mutex);
+        lv_display_flush_ready(job.disp);
+    }
+}
+
+void flush_cb(lv_display_t* d, const lv_area_t* a, uint8_t* px) {
+    dirty_y1 = std::min<int>(dirty_y1, a->y1);
+    dirty_y2 = std::max<int>(dirty_y2, a->y2);
+    if (!lv_display_flush_is_last(d)) {
+        lv_display_flush_ready(d);
+        return;
+    }
+    TxJob job{d, reinterpret_cast<const uint16_t*>(px), std::max(0, dirty_y1 & ~1), std::min(kH - 1, dirty_y2 | 1)};
+    dirty_y1 = kH;
+    dirty_y2 = -1;
+    if (job.y2 < job.y1 || xQueueSend(tx_queue, &job, 0) != pdTRUE) lv_display_flush_ready(d);
+}
+
+// Chunk completion is tracked by draw_bitmap itself; the port's per-transfer callback would
+// mark the whole frame done after the first chunk.
+bool on_color_done(esp_lcd_panel_io_handle_t, esp_lcd_panel_io_event_data_t*, void*) { return false; }
+
+// Replaces bsp_display_start_with_config(), which ignores the buffer settings it is given and
+// puts a 100-line draw buffer in PSRAM; the SPI driver then malloc'd an ~80 KB internal DMA
+// copy per flush, which failed once internal RAM fragmented (stuck bands of old map tiles).
+lv_display_t* start_display() {
+    lvgl_port_cfg_t port = ESP_LVGL_PORT_INIT_CONFIG();
+    port.task_priority = 4;  // below BLE host (prio ~19) so radio work is never starved
+    port.task_stack = 12288;
+    port.task_affinity = 1;  // UI on core 1, Bluetooth controller/host on core 0
+    port.timer_period_ms = 10;
+    if (lvgl_port_init(&port) != ESP_OK) return nullptr;
+
+    bsp_display_config_t dcfg = {};
+    dcfg.max_transfer_sz = kW * kChunkRows * 2;
+    esp_lcd_panel_io_handle_t io = nullptr;
+    if (bsp_display_new(&dcfg, &panel, &io) != ESP_OK) return nullptr;
+    for (auto& b : bounce) {
+        b = static_cast<uint32_t*>(heap_caps_aligned_alloc(4, kW * kChunkRows * 2, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
+        if (!b) return nullptr;
+    }
+    tx_queue = xQueueCreate(1, sizeof(TxJob));
+    panel_mutex = xSemaphoreCreateMutex();
+    if (!panel_mutex) return nullptr;
+    // Core 0, so copying overlaps LVGL rendering on core 1; below the BLE host.
+    if (!tx_queue || xTaskCreatePinnedToCore(tx_task, "lcd_tx", 3072, nullptr, 5, &tx_task_handle, 0) != pdPASS) return nullptr;
+
+    lvgl_port_display_cfg_t cfg = {};
+    cfg.io_handle = io;
+    cfg.panel_handle = panel;
+    cfg.buffer_size = kW * kH;  // two full frames in PSRAM (2 x 402 KB)
+    cfg.double_buffer = true;
+    cfg.hres = kW;
+    cfg.vres = kH;
+    cfg.color_format = LV_COLOR_FORMAT_RGB565;
+    cfg.flags.buff_dma = false;
+    cfg.flags.buff_spiram = true;
+    cfg.flags.direct_mode = true;
+    // No sw_rotate (the UI never rotates; the port would allocate a rotation buffer) and no
+    // swap_bytes (tx_task swaps). The port sets the panel orientation instead; sh8601 logs
+    // "swap_xy is not supported" and esp_lcd warns that our on_color_trans_done replaced the
+    // port's; both harmless.
+    // Locked so the LVGL task can't render a frame through the port's own flush callback
+    // before ours is installed (it would wait forever for the callback replaced below).
+    lvgl_port_lock(0);
+    lv_display_t* d = lvgl_port_add_disp(&cfg);
+    if (!d) {
+        lvgl_port_unlock();
+        return nullptr;
+    }
+    esp_lcd_panel_io_callbacks_t cbs = {};
+    cbs.on_color_trans_done = on_color_done;
+    esp_lcd_panel_io_register_event_callbacks(io, &cbs, nullptr);
+    lv_display_set_flush_cb(d, flush_cb);
+    lv_display_add_event_cb(d, rounder_cb, LV_EVENT_INVALIDATE_AREA, nullptr);
+    lvgl_port_unlock();
+
+    esp_lcd_touch_handle_t tp = nullptr;
+    if (bsp_touch_new(nullptr, &tp) == ESP_OK && tp) {
+        lvgl_port_touch_cfg_t tcfg = {};
+        tcfg.disp = d;
+        tcfg.handle = tp;
+        lvgl_port_add_touch(&tcfg);
+    } else {
+        ESP_LOGE(TAG, "touch init failed");
+    }
+    xSemaphoreTake(panel_mutex, portMAX_DELAY);
+    bsp_display_brightness_init();
+    xSemaphoreGive(panel_mutex);
+    return d;
+}
+
 }  // namespace
 
 const char* name() { return "Waveshare ESP32-S3-Touch-AMOLED-2.06"; }
@@ -116,17 +261,7 @@ esp_err_t init() {
 
     if (axp2101::init(bus) == ESP_OK) caps.battery_gauge = true;
 
-    bsp_display_cfg_t cfg = {};
-    cfg.lvgl_port_cfg = ESP_LVGL_PORT_INIT_CONFIG();
-    cfg.lvgl_port_cfg.task_priority = 4;  // below BLE host (prio ~19) so radio work is never starved
-    cfg.lvgl_port_cfg.task_stack = 12288;
-    cfg.lvgl_port_cfg.task_affinity = 1;  // UI on core 1, Bluetooth controller/host on core 0
-    cfg.lvgl_port_cfg.timer_period_ms = 10;
-    cfg.buffer_size = BSP_LCD_H_RES * 50;  // 50-line partial buffer in internal DMA RAM (~40 KB)
-    cfg.double_buffer = false;
-    cfg.flags.buff_dma = true;
-    cfg.flags.buff_spiram = false;
-    disp = bsp_display_start_with_config(&cfg);
+    disp = start_display();
     if (!disp) return ESP_FAIL;
     esp_timer_create_args_t wd = {};
     wd.callback = flush_wd_cb;
@@ -147,7 +282,10 @@ bool take_display_recovered() { return recovered.exchange(false); }
 void set_brightness(int percent) {
     if (percent < 1) percent = 1;
     if (percent > 100) percent = 100;
+    if (!panel_mutex) return;
+    xSemaphoreTake(panel_mutex, portMAX_DELAY);
     bsp_display_brightness_set(percent);
+    xSemaphoreGive(panel_mutex);
 }
 
 bool imu_read(ImuSample& out) {

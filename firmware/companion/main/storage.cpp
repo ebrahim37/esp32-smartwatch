@@ -378,7 +378,7 @@ void storage_task(void*) {
 
 }  // namespace
 
-void start() { xTaskCreatePinnedToCore(storage_task, "storage", 6144, nullptr, 3, nullptr, 0); }
+void start() { xTaskCreatePinnedToCore(storage_task, "storage", 4608, nullptr, 3, nullptr, 0); }  // ~2.5 KB stack used
 
 Info info() {
     std::lock_guard<std::mutex> g(mu);

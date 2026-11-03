@@ -11,7 +11,8 @@ namespace ccore {
 struct RemoteTrack {
     std::string id;
     std::string suffix;  // file extension from the server ("mp3", "flac", "m4a")
-    uint64_t size = 0;   // original file size as reported by Subsonic
+    uint64_t size = 0;   // exact file size, or 0 when unknown (transcoded on download)
+    uint64_t budget = 0; // quota estimate used when size is 0
 };
 
 struct LocalFile {

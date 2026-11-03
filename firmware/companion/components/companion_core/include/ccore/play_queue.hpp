@@ -22,6 +22,10 @@ public:
     bool prev(bool restart_threshold_passed);
 
     void set_shuffle(bool on, uint32_t seed);  // keeps the current track playing
+    // The next `n` tracks the Next button would play (wrapping only with repeat all/one).
+    std::vector<uint16_t> upcoming(size_t n) const;
+    // Shuffle: re-draw everything after the current track (fresh "up next" after each switch).
+    void reshuffle_upcoming(uint32_t seed);
     void set_repeat(Repeat r) { repeat_ = r; }
     bool shuffle() const { return shuffle_; }
     Repeat repeat() const { return repeat_; }

@@ -483,6 +483,7 @@ enum class PlaybackCmd : uint8_t {
     Stop = 10,
     SetVolume = 11,    // arg = 0..127 (AVRCP absolute volume)
     AlertTone = 12,    // short alert tone on the connected sink (timer/alarm), arg = repeats
+    SkipTo = 13,       // arg = 1-based position in PlaybackStatus::up_next
 };
 
 enum class RepeatMode : uint8_t { Off = 0, All = 1, One = 2 };
@@ -495,6 +496,13 @@ struct PlaybackCommand {
     std::string str;
     template <class A>
     void fields(A& a) { a.u8(cmd); a.u32(arg); a.str8(str); }
+};
+
+struct UpNextItem {
+    std::string title;
+    std::string artist;
+    template <class A>
+    void fields(A& a) { a.str8(title); a.str8(artist); }
 };
 
 struct PlaybackStatus {
@@ -513,11 +521,12 @@ struct PlaybackStatus {
     uint8_t volume = 0;
     uint8_t sink_connected = 0;
     std::string error;
+    std::vector<UpNextItem> up_next;  // the next tracks Next would play (max 4)
     template <class A>
     void fields(A& a) {
         a.u8(state); a.str8(playlist_id); a.u16(index); a.str8(track_id); a.str8(title); a.str8(artist);
         a.str8(album); a.u32(position_ms); a.u32(duration_ms); a.u8(shuffle); a.u8(repeat); a.u8(volume);
-        a.u8(sink_connected); a.str8(error);
+        a.u8(sink_connected); a.str8(error); a.list(up_next, 4);
     }
 };
 
@@ -692,12 +701,13 @@ struct CompanionStatus {
     uint32_t psram_free = 0;
     uint16_t notif_pending = 0;
     uint32_t last_notif_poll = 0;  // UTC seconds
+    uint32_t internet_age_s = UINT32_MAX;  // since the last successful internet (HTTPS/SNTP) exchange
     template <class A>
     void fields(A& a) {
         a.str8(firmware); a.u32(uptime_s); a.u8(sd_state); a.u32(sd_total_mb); a.u32(sd_free_mb);
         a.u32(music_mb); a.u32(maps_mb); a.u8(net_state); a.u8(net_provider); a.u8(server_ok);
         a.u8(sync_state); a.u16(sync_done); a.u16(sync_total); a.u32(heap_free); a.u32(psram_free);
-        a.u16(notif_pending); a.u32(last_notif_poll);
+        a.u16(notif_pending); a.u32(last_notif_poll); a.u32(internet_age_s);
     }
 };
 

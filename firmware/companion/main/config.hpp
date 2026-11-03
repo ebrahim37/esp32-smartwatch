@@ -22,13 +22,9 @@ constexpr const char* kWifiSsid = "wifi_ssid";
 constexpr const char* kWifiPass = "wifi_pass";
 constexpr const char* kServerUrl = "srv_url";      // VPS helper base URL, https://...
 constexpr const char* kServerToken = "srv_token";  // bearer token for the VPS helper
-constexpr const char* kNdUrl = "nd_url";           // Navidrome base URL (through Caddy)
+constexpr const char* kNdUrl = "nd_url";           // Navidrome base URL (https, or http on the home LAN)
 constexpr const char* kNdUser = "nd_user";
 constexpr const char* kNdPass = "nd_pass";
-constexpr const char* kNdHeader = "nd_hdr";        // name of the extra auth header for Caddy
-constexpr const char* kNdHeaderValue = "nd_hdr_val";
-// TODO(PROTOTYPE): exactly one playlist is synchronised; see CONFIG_PROTOTYPE_PLAYLIST_ID.
-constexpr const char* kPrototypePlaylistIdKey = "nd_playlist";
 // ntfy subscription (see ntfy.hpp). The token is sent as the reverse proxy's `Auth` header.
 constexpr const char* kNtfyUrl = "ntfy_url";
 constexpr const char* kNtfyToken = "ntfy_token";

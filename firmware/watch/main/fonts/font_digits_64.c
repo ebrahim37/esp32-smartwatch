@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 64 px
  * Bpp: 4
- * Opts: --no-compress --no-prefilter --bpp 4 --size 64 --format lvgl --lv-include lvgl.h --font /home/ebrahim/esp32-smartwatch/.cache/fonts/extras/ttf/InterDisplay-SemiBold.ttf --symbols 0123456789:.- -r 0x2212,0xB0 -o /home/ebrahim/esp32-smartwatch/firmware/watch/main/fonts/font_digits_64.c --lv-font-name font_digits_64
+ * Opts: --no-compress --no-prefilter --bpp 4 --size 64 --format lvgl --lv-include lvgl.h --font /home/ebrahim/esp32-smartwatch/build/cache/fonts/extras/ttf/InterDisplay-SemiBold.ttf --symbols 0123456789:.- -r 0x2212,0xB0 -o /home/ebrahim/esp32-smartwatch/firmware/watch/main/fonts/font_digits_64.c --lv-font-name font_digits_64
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE

@@ -3,6 +3,7 @@
 #include <mutex>
 
 #include "ccore/ntfy.hpp"
+#include "ccore/subsonic.hpp"
 #include "esp_log.h"
 #include "nvs.h"
 #include "nvs_flash.h"
@@ -22,14 +23,11 @@ const std::vector<KeyInfo> kKeys = {
     {kWifiPass, true, 64, "Home Wi-Fi password"},
     {kServerUrl, false, 128, "VPS helper base URL (https)"},
     {kServerToken, true, 128, "VPS helper device token"},
-    {kNdUrl, false, 128, "Navidrome base URL (https)"},
+    {kNdUrl, false, 128, "Navidrome base URL (https, or http://<private LAN IP>:port)"},
     {kNdUser, false, 64, "Navidrome user"},
     {kNdPass, true, 128, "Navidrome password (used only for token auth)"},
-    {kNdHeader, false, 64, "Extra auth header name for the reverse proxy"},
-    {kNdHeaderValue, true, 256, "Extra auth header value"},
-    {kPrototypePlaylistIdKey, false, 64, "PROTOTYPE_PLAYLIST_ID: playlist to sync"},
     {kNtfyUrl, false, 128, "ntfy base URL (https), e.g. https://ntfy-watch.example.com"},
-    {kNtfyToken, true, 128, "ntfy reverse-proxy Auth header value"},
+    {kNtfyToken, true, 128, "ntfy reverse-proxy auth header value"},
     {kNtfyTopics, false, 512, "ntfy topics to watch, comma-separated"},
     {kTimezone, false, 64, "POSIX TZ string"},
     {kDeviceName, false, 24, "BLE device name"},
@@ -39,8 +37,9 @@ bool valid_value(const KeyInfo& k, const std::string& v) {
     if (v.size() > k.max_len) return false;
     for (unsigned char c : v)
         if (c < 0x20 && c != '\t') return false;  // no control characters
+    bool lan_ok = std::string(k.key) == kNdUrl && ccore::lan_http_url(v);  // Navidrome on the home LAN
     if ((std::string(k.key) == kServerUrl || std::string(k.key) == kNdUrl || std::string(k.key) == kNtfyUrl) && !v.empty() &&
-        v.rfind("https://", 0) != 0)
+        v.rfind("https://", 0) != 0 && !lan_ok)
         return false;  // TLS only
     if (std::string(k.key) == kNtfyTopics && !ccore::ntfy::valid_topic_list(v)) return false;
     return true;
@@ -64,7 +63,6 @@ void init() {
         err = nvs_flash_init_partition(kPart);
     }
     ESP_ERROR_CHECK(err);
-    if (get(kPrototypePlaylistIdKey).empty() && CONFIG_PROTOTYPE_PLAYLIST_ID[0]) set(kPrototypePlaylistIdKey, CONFIG_PROTOTYPE_PLAYLIST_ID);
 }
 
 std::string get(const char* key, const std::string& def) {

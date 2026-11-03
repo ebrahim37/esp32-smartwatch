@@ -61,6 +61,25 @@ bool PlayQueue::prev(bool restart_threshold_passed) {
     return true;
 }
 
+std::vector<uint16_t> PlayQueue::upcoming(size_t n) const {
+    std::vector<uint16_t> out;
+    if (order_.empty()) return out;
+    bool wrap = repeat_ != Repeat::Off;
+    for (size_t k = 1; k < order_.size() && out.size() < n; ++k) {
+        size_t p = pos_ + k;
+        if (p >= order_.size()) {
+            if (!wrap) break;
+            p -= order_.size();
+        }
+        out.push_back(order_[p]);
+    }
+    return out;
+}
+
+void PlayQueue::reshuffle_upcoming(uint32_t seed) {
+    if (shuffle_ && pos_ + 1 < order_.size()) shuffle_from(pos_ + 1, seed);
+}
+
 void PlayQueue::set_shuffle(bool on, uint32_t seed) {
     if (on == shuffle_ || order_.empty()) {
         shuffle_ = on;

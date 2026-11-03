@@ -7,9 +7,11 @@
 
 #include "ccore/backoff.hpp"
 #include "config.hpp"
+#include "dispatch.hpp"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#include "esp_timer.h"
 #include "esp_netif_sntp.h"
 #include "esp_random.h"
 #include "esp_wifi.h"
@@ -64,7 +66,13 @@ void on_event(void*, esp_event_base_t base, int32_t id, void* data) {
 
 void time_sync_cb(struct timeval*) {
     if (!synced.exchange(true)) ESP_LOGI(TAG, "SNTP time synchronised");
+    mark_internet();
 }
+
+// Strongest AP found by the last scan_for(), so connect() can skip the driver's own
+// all-channel scan (which caches every AP around in internal RAM: ~45 KB in a busy building).
+uint8_t found_bssid[6] = {};
+uint8_t found_channel = 0;
 
 bool scan_for(const std::string& ssid) {
     wifi_scan_config_t sc = {};
@@ -81,9 +89,19 @@ bool scan_for(const std::string& ssid) {
     }
     uint16_t n = 0;
     esp_wifi_scan_get_ap_num(&n);
-    bool found = n > 0;
+    found_channel = 0;
+    wifi_ap_record_t best = {};
+    for (uint16_t i = 0; i < n; ++i) {
+        wifi_ap_record_t r;
+        if (esp_wifi_scan_get_ap_record(&r) != ESP_OK) break;  // also frees the record
+        if (!found_channel || r.rssi > best.rssi) {
+            best = r;
+            found_channel = r.primary;
+        }
+    }
+    if (found_channel) memcpy(found_bssid, best.bssid, 6);
     esp_wifi_clear_ap_list();
-    return found;
+    return n > 0;
 }
 
 bool connect(const std::string& ssid, const std::string& pass) {
@@ -93,6 +111,12 @@ bool connect(const std::string& ssid, const std::string& pass) {
     wc.sta.threshold.authmode = pass.empty() ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA2_PSK;
     wc.sta.pmf_cfg.capable = true;
     wc.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
+    wc.sta.scan_method = WIFI_FAST_SCAN;
+    if (found_channel) {
+        wc.sta.channel = found_channel;
+        wc.sta.bssid_set = true;
+        memcpy(wc.sta.bssid, found_bssid, 6);
+    }
     esp_wifi_set_config(WIFI_IF_STA, &wc);
     set_state(swp::NetState::Connecting);
     xEventGroupClearBits(events, kGotIp | kDisconnected);
@@ -198,6 +222,38 @@ swp::WifiStatus status() {
 }
 
 bool online() { return is_online.load(); }
+
+namespace {
+std::atomic<int64_t> internet_us{0};
+constexpr int64_t kInternetFreshUs = 90 * 1000000LL;  // the watch's NET window
+}  // namespace
+
+void mark_internet() {
+    int64_t now = esp_timer_get_time();
+    int64_t prev = internet_us.exchange(now);
+    // Tell the watch right away when NET turns green (the periodic status is every 30 s). Sent
+    // from the esp_timer task, which already runs the periodic broadcast: callers include the
+    // lwIP thread (SNTP) and small-stack tasks.
+    if (prev == 0 || now - prev > kInternetFreshUs) {
+        static esp_timer_handle_t t = [] {
+            esp_timer_create_args_t a = {};
+            a.callback = [](void*) { dispatch::broadcast_status(); };
+            a.name = "net_notify";
+            esp_timer_handle_t h = nullptr;
+            esp_timer_create(&a, &h);
+            return h;
+        }();
+        if (t) {
+            esp_timer_stop(t);
+            esp_timer_start_once(t, 1000);
+        }
+    }
+}
+
+uint32_t internet_age_s() {
+    int64_t t = internet_us.load();
+    return t ? static_cast<uint32_t>((esp_timer_get_time() - t) / 1000000) : UINT32_MAX;
+}
 swp::NetProvider provider() { return online() ? swp::NetProvider::Wifi : swp::NetProvider::None; }
 void reconfigure() { xEventGroupSetBits(events, kReconfigure); }
 bool time_synced() { return synced.load(); }

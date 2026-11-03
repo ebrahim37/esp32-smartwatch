@@ -101,37 +101,68 @@ flash() {
     if [ "${3:-}" = "--monitor" ]; then idf "$t" -p "$port" monitor; fi
 }
 
-# Regenerates firmware/watch/main/fonts/*.c from Inter (SIL OFL 1.1). The outputs are
+# Regenerates firmware/watch/main/fonts/*.c from Inter and, for song/artist names in Arabic
+# script (Arabic, Persian, Urdu), Noto Sans Arabic (both SIL OFL 1.1). The outputs are
 # committed; only needed to change sizes or glyph sets. Needs network access.
 fonts() {
     local OUT="$ROOT/firmware/watch/main/fonts" WORK="$B/cache/fonts"
     local INTER_URL="https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip"
     local INTER_SHA256="9883fdd4a49d4fb66bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e"
+    local NOTO_AR_URL="https://github.com/notofonts/arabic/releases/download/NotoSansArabic-v2.013/NotoSansArabic-v2.013.zip"
+    local NOTO_AR_SHA256="1301aceaea84c501cf2e6dcfb3182e2328c8eae5725817fcb239672bda7154f1"
     local LV_FONT_CONV="lv_font_conv@1.5.3"
-    # FontAwesome glyphs used by LV_SYMBOL_* (LVGL's built-in set) plus U+F002 (search).
+    # FontAwesome glyphs used by LV_SYMBOL_* (LVGL's built-in set) plus U+F002 (search), U+F005 (star)
+    # and WX_SYMS: weather icons (sun, moon, cloud, cloud-sun/moon, rain, showers, snowflake, smog, bolt)
+    # plus link, walking, bell-slash (Do Not Disturb) and lock.
     local FA_WOFF="$ROOT/firmware/watch/managed_components/lvgl__lvgl/scripts/built_in_font/FontAwesome5-Solid+Brands+Regular.woff"
-    local FA_SYMS="61441,61442,61448,61451,61452,61453,61457,61459,61461,61465,61468,61473,61478,61479,61480,61502,61507,61512,61515,61516,61517,61521,61522,61523,61524,61543,61544,61550,61552,61553,61556,61559,61560,61561,61563,61587,61589,61636,61637,61639,61641,61664,61671,61674,61683,61724,61732,61787,61931,62016,62017,62018,62019,62020,62087,62099,62212,62189,62810,63426,63650"
+    local FA_SYMS="61441,61442,61445,61448,61451,61452,61453,61457,61459,61461,61465,61468,61473,61478,61479,61480,61502,61507,61512,61515,61516,61517,61521,61522,61523,61524,61543,61544,61550,61552,61553,61556,61559,61560,61561,61563,61587,61589,61636,61637,61639,61641,61664,61671,61674,61683,61724,61732,61787,61931,62016,62017,62018,62019,62020,62087,62099,62212,62189,62810,63426,63650"
+    local WX_SYMS="0xF185,0xF186,0xF0C2,0xF6C4,0xF6C3,0xF73D,0xF740,0xF2DC,0xF75F,0xF0E7,0xF0C1,0xF554,0xF1F6,0xF023"
     # ASCII, copyright, degree, multiply, divide, middle dot, bullet, en/em dash, minus, ellipsis, arrows.
     local TEXT_RANGE="0x20-0x7E,0xA9,0xB0,0xD7,0xF7,0xB7,0x2022,0x2013,0x2014,0x2212,0x2026,0x2190-0x2193"
+    # Text sizes used for song/artist/playlist names also get Latin-1/Extended-A, Greek and
+    # Cyrillic (Inter), and Arabic plus the presentation forms LVGL's Arabic/Persian shaping
+    # maps letters to (Noto Sans Arabic).
+    local INTL_RANGE="0xA0-0x17F,0x370-0x3FF,0x400-0x4FF,0x2018-0x201E"
+    local ARABIC_RANGE="0x600-0x6FF,0xFB50-0xFDFF,0xFE70-0xFEFF"
     mkdir -p "$WORK" "$OUT"
     [ -f "$WORK/Inter.zip" ] || curl -sSLo "$WORK/Inter.zip" "$INTER_URL"
     echo "$INTER_SHA256  $WORK/Inter.zip" | sha256sum -c -
     unzip -oq "$WORK/Inter.zip" "extras/ttf/Inter-Medium.ttf" "extras/ttf/Inter-SemiBold.ttf" "extras/ttf/InterDisplay-SemiBold.ttf" "LICENSE.txt" -d "$WORK"
+    [ -f "$WORK/NotoSansArabic.zip" ] || curl -sSLo "$WORK/NotoSansArabic.zip" "$NOTO_AR_URL"
+    echo "$NOTO_AR_SHA256  $WORK/NotoSansArabic.zip" | sha256sum -c -
+    unzip -oq "$WORK/NotoSansArabic.zip" "NotoSansArabic/hinted/ttf/NotoSansArabic-Medium.ttf" "NotoSansArabic/hinted/ttf/NotoSansArabic-SemiBold.ttf" "OFL.txt" -d "$WORK/noto"
+    cp "$WORK/noto/OFL.txt" "$ROOT/firmware/watch/assets/fonts/NotoSansArabic-LICENSE.txt"
     [ -f "$FA_WOFF" ] || { echo "run scripts/sw build watch once first (fetches LVGL)"; exit 1; }
     cp "$WORK/LICENSE.txt" "$ROOT/firmware/watch/assets/fonts/Inter-LICENSE.txt"
-    gen_text() {  # name size ttf
+    gen_text() {  # name size ttf [arabic ttf]
+        local intl=()
+        [ -n "${4:-}" ] && intl=(--font "$WORK/extras/ttf/$3" -r "$INTL_RANGE" --font "$WORK/noto/NotoSansArabic/hinted/ttf/$4" -r "$ARABIC_RANGE")
         npx -y "$LV_FONT_CONV" --no-compress --no-prefilter --bpp 4 --size "$2" --format lvgl --lv-include lvgl.h \
-            --font "$WORK/extras/ttf/$3" -r "$TEXT_RANGE" --font "$FA_WOFF" -r "$FA_SYMS" -o "$OUT/$1.c" --lv-font-name "$1"
+            --font "$WORK/extras/ttf/$3" -r "$TEXT_RANGE" "${intl[@]}" --font "$FA_WOFF" -r "$FA_SYMS" -r "$WX_SYMS" -o "$OUT/$1.c" --lv-font-name "$1"
+        if [ -n "${4:-}" ]; then
+            # Noto Sans Arabic's tall stacked-mark metrics would grow every label and row by
+            # ~60%: keep Inter's line height and baseline (rare stacked marks may clip).
+            npx -y "$LV_FONT_CONV" --no-compress --no-prefilter --bpp 4 --size "$2" --format lvgl --lv-include lvgl.h \
+                --font "$WORK/extras/ttf/$3" -r 0x20-0x7E -o "$WORK/metrics.c" --lv-font-name metrics
+            local lh bl
+            lh=$(sed -n 's/.*\.line_height = \([0-9]*\),.*/\1/p' "$WORK/metrics.c")
+            bl=$(sed -n 's/.*\.base_line = \([0-9]*\),.*/\1/p' "$WORK/metrics.c")
+            sed -i "s/\(\.line_height = \)[0-9]*,/\1$lh,/; s/\(\.base_line = \)[0-9]*,/\1$bl,/" "$OUT/$1.c"
+        fi
     }
     gen_digits() {  # name size ttf
         npx -y "$LV_FONT_CONV" --no-compress --no-prefilter --bpp 4 --size "$2" --format lvgl --lv-include lvgl.h \
             --font "$WORK/extras/ttf/$3" --symbols "0123456789:.-" -r 0x2212,0xB0 -o "$OUT/$1.c" --lv-font-name "$1"
     }
-    gen_text font_inter_16 16 Inter-Medium.ttf
-    gen_text font_inter_20 20 Inter-Medium.ttf
-    gen_text font_inter_24 24 Inter-SemiBold.ttf
+    gen_text font_inter_16 16 Inter-Medium.ttf NotoSansArabic-Medium.ttf
+    gen_text font_inter_20 20 Inter-Medium.ttf NotoSansArabic-Medium.ttf
+    gen_text font_inter_24 24 Inter-SemiBold.ttf NotoSansArabic-SemiBold.ttf
     gen_text font_inter_32 32 Inter-SemiBold.ttf
     gen_digits font_digits_64 64 InterDisplay-SemiBold.ttf
+    gen_digits font_digits_84 84 InterDisplay-SemiBold.ttf
+    # Large weather icon beside the temperature (Weather app, watch face).
+    npx -y "$LV_FONT_CONV" --no-compress --no-prefilter --bpp 4 --size 44 --format lvgl --lv-include lvgl.h \
+        --font "$FA_WOFF" -r "$WX_SYMS" -o "$OUT/font_wx_44.c" --lv-font-name font_wx_44
     gen_digits font_digits_132 132 InterDisplay-SemiBold.ttf
     echo "fonts written to $OUT"
 }

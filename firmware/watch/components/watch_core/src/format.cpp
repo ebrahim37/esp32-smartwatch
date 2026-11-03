@@ -52,14 +52,21 @@ std::string fmt_clock(const struct tm& lt, bool h24) {
     return b;
 }
 
+std::string fmt_hour12(int hour) {
+    char b[8];
+    std::snprintf(b, sizeof b, "%d %s", (hour % 12) ? hour % 12 : 12, hour % 24 < 12 ? "AM" : "PM");
+    return b;
+}
+
 std::string fmt_precip(uint8_t kind, int32_t minutes, uint8_t horizon_h) {
-    const char* what = kind == 2 ? "snow" : kind == 3 ? "sleet" : "rain";
-    if (kind == 0xFF) return "precip. unknown";
-    if (kind == 0 || minutes < 0) {
-        (void)horizon_h;
-        return "no precipitation";
-    }
+    const char* what = kind == 2 ? "Snow" : kind == 3 ? "Sleet" : "Rain";
+    if (kind == 0xFF) return "Precip. unknown";
     char b[40];
+    if (kind == 0 || minutes < 0) {
+        if (horizon_h == 0) return "No precipitation";
+        std::snprintf(b, sizeof b, "Clear for %u hr%s", horizon_h, horizon_h == 1 ? "" : "s");
+        return b;
+    }
     if (minutes == 0)
         std::snprintf(b, sizeof b, "%s now", what);
     else if (minutes < 60)

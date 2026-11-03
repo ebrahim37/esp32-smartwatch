@@ -5,10 +5,12 @@
 #pragma once
 
 #include <cstdint>
+#include <ctime>
 #include <functional>
 #include <string>
 
 #include "lvgl.h"
+#include "swp/messages.hpp"
 
 extern "C" {
 LV_FONT_DECLARE(font_inter_16)
@@ -17,6 +19,8 @@ LV_FONT_DECLARE(font_inter_24)
 LV_FONT_DECLARE(font_inter_32)
 LV_FONT_DECLARE(font_digits_64)
 LV_FONT_DECLARE(font_digits_132)
+LV_FONT_DECLARE(font_digits_84)
+LV_FONT_DECLARE(font_wx_44)
 }
 
 namespace ui {
@@ -38,11 +42,14 @@ inline lv_color_t pink() { return lv_color_hex(0xFF375F); }
 }  // namespace color
 
 #define UI_SYMBOL_SEARCH "\xEF\x80\x82"  // FontAwesome magnifying glass (U+F002)
+#define UI_SYMBOL_STAR "\xEF\x80\x85"    // FontAwesome star (U+F005)
+#define UI_SYMBOL_LOCK "\xEF\x80\xA3"    // FontAwesome lock (U+F023)
 
 // Safe area for the panel's rounded corners. kCornerR is the visible corner radius of the
-// 410x502 AMOLED, estimated from clipping observed on the prototype (TODO(HARDWARE): refine);
-// corner-sensitive layout derives from it.
-constexpr int kCornerR = 120;
+// 410x502 AMOLED, measured on the prototype with the Display geometry test patterns: all four
+// corners are circular arcs of ~112 px touching the edges, and no edge pixels are hidden.
+// Corner-sensitive layout derives from it.
+constexpr int kCornerR = 112;
 constexpr int kNavBtn = 60;   // Back / Home / Close / Done buttons
 constexpr int kNavY = 46;     // nav button centre, from the top edge
 constexpr int kCornerMargin = 4;
@@ -78,6 +85,7 @@ public:
     virtual void refresh(uint32_t dirty) { (void)dirty; }
     // Periodic hook while visible; period from tick_ms().
     virtual void tick() {}
+    virtual void on_dim(bool dimmed) { (void)dimmed; }  // display dimmed after inactivity / woken
     virtual uint32_t tick_ms() const { return 1000; }
     virtual void on_shown() {}
 
@@ -143,8 +151,27 @@ Screen* make_notifications();
 Screen* make_settings();
 Screen* make_voice_memos();
 Screen* make_activity();
+Screen* make_geometry_test();
+Screen* make_lock();  // Lock app: locks now (or explains how to set a passcode); returns nullptr
+Screen* make_passcode_settings();
+// Full-screen passcode overlay above everything; stays until the right passcode is entered.
+void show_lock_overlay();
 
 // Mini player bar shown at the bottom of music screens while something is playing.
+// ---- Weather (ui/weather.cpp) ----------------------------------------------------------------
+const char* wx_icon(uint8_t wmo, bool night);  // FontAwesome glyph for a WMO weather code
+lv_color_t wx_color(uint8_t wmo, bool night);
+bool wx_night(time_t t);
+// Summary row: icon, temperature and high/low left of x = `split`, then right-justified the
+// outlook (precipitation when coming, else "N UV", red when high) over wind. Compact (dimmed
+// watch face): icon and temperature, plus the outlook only when rain is coming or UV is high.
+lv_obj_t* weather_row(lv_obj_t* parent, int width, int split);
+void weather_row_set(lv_obj_t* row, const swp::Weather& w, bool valid);
+void weather_row_compact(lv_obj_t* row, bool compact);
+// Thin divider lines (watch face rows, weather row).
+lv_obj_t* vdivider(lv_obj_t* parent, int height);
+lv_obj_t* hdivider(lv_obj_t* parent, int width);
+
 lv_obj_t* mini_player(lv_obj_t* parent);
 void mini_player_refresh(lv_obj_t* bar);
 

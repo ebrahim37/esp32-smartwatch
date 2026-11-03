@@ -115,6 +115,7 @@ struct State {
     swp::AudioDevices audio_devices;
     bool companion_valid = false;
     swp::CompanionStatus companion;
+    int64_t companion_rx_us = 0;  // when `companion` arrived (esp_timer)
     std::vector<swp::ConfigValue> config_values;
 
     bool search_pending = false;

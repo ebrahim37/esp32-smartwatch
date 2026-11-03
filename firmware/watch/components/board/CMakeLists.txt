@@ -5,7 +5,7 @@ idf_component_register(
     SRCS waveshare_amoled_206.cpp axp2101.cpp lv_mem_psram.c
     INCLUDE_DIRS include
     REQUIRES lvgl__lvgl esp_driver_i2c esp_driver_gpio esp_timer
-    PRIV_REQUIRES waveshare__esp32_s3_touch_amoled_2_06 waveshare__qmi8658 heap esp_lvgl_port)
+    PRIV_REQUIRES waveshare__esp32_s3_touch_amoled_2_06 waveshare__qmi8658 heap esp_lvgl_port espressif__esp_lcd_touch)
 
 # LVGL (CONFIG_LV_USE_CUSTOM_MALLOC) calls lv_malloc_core() etc. defined here; make the
 # static-link order resolve them.

@@ -42,7 +42,7 @@ verification succeeds. Test: `curl -H "Authorization: Bearer $TOKEN" https://wat
 ## Notifications: companion → ntfy directly
 
 The helper is not involved in notifications; the companion subscribes to ntfy itself:
-`GET <ntfy_url>/<topic1,topic2>/json?since=<cursor>` with an `Auth: <ntfy_token>` header that
+`GET <ntfy_url>/<topic1,topic2>/json?since=<cursor>` with an `auth: <ntfy_token>` header that
 the reverse proxy checks (read-only, GET only). ntfy pushes each message and a keepalive about
 every 45 s over that one TLS connection, so idle cost is a few small TLS records per minute
 rather than a full HTTPS request (and often a TLS handshake) per poll.

@@ -3,10 +3,13 @@
 #include <cstdio>
 #include <cstring>
 
+#include "ccore/subsonic.hpp"
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "net.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -15,8 +18,9 @@ namespace {
 
 constexpr const char* TAG = "http";
 
-esp_http_client_handle_t open_client(const std::string& url, esp_http_client_method_t method, const Headers& headers) {
-    if (url.rfind("https://", 0) != 0) return nullptr;  // TLS only
+esp_http_client_handle_t open_client(const std::string& url, esp_http_client_method_t method, const Headers& headers,
+                                     bool allow_lan_http = false) {
+    if (url.rfind("https://", 0) != 0 && !(allow_lan_http && ccore::lan_http_url(url))) return nullptr;  // TLS only
     esp_http_client_config_t cfg = {};
     cfg.url = url.c_str();
     cfg.method = method;
@@ -25,7 +29,8 @@ esp_http_client_handle_t open_client(const std::string& url, esp_http_client_met
     cfg.buffer_size = 2048;
     cfg.buffer_size_tx = 1024;
     cfg.keep_alive_enable = false;
-    cfg.disable_auto_redirect = false;
+    // Plain-HTTP LAN requests don't follow redirects: the URL check above is the only gate.
+    cfg.disable_auto_redirect = allow_lan_http && url.rfind("http://", 0) == 0;
     cfg.max_redirection_count = 3;
     esp_http_client_handle_t c = esp_http_client_init(&cfg);
     if (!c) return nullptr;
@@ -34,10 +39,22 @@ esp_http_client_handle_t open_client(const std::string& url, esp_http_client_met
     return c;
 }
 
+// A response over HTTPS proves the internet path (plain HTTP is only allowed on the LAN).
+void note_response(const char* url, int status) {
+    if (status > 0 && strncmp(url, "https://", 8) == 0) net::mark_internet();
+}
+
+void note_response(esp_http_client_handle_t c, int status) {
+    char url[16] = {};
+    esp_http_client_get_url(c, url, sizeof url);  // only the scheme matters (truncation is fine)
+    note_response(url, status);
+}
+
 Result read_body(esp_http_client_handle_t c, std::vector<uint8_t>& body, size_t max_len) {
     Result r;
     int64_t len = esp_http_client_fetch_headers(c);
     r.status = esp_http_client_get_status_code(c);
+    if (len >= 0) note_response(c, r.status);
     if (len < 0) {
         r.status = 0;
         r.error = "header fetch failed";
@@ -136,6 +153,7 @@ Result Session::get(const std::string& url, const Headers& headers, std::vector<
         esp_err_t err = esp_http_client_perform(client_);
         if (err == ESP_OK) {
             r.status = esp_http_client_get_status_code(client_);
+            note_response(url.c_str(), r.status);
             if (sink.too_large) {
                 r.status = 0;
                 r.error = "response too large";
@@ -149,9 +167,9 @@ Result Session::get(const std::string& url, const Headers& headers, std::vector<
     return r;
 }
 
-Result get(const std::string& url, const Headers& headers, std::vector<uint8_t>& body, size_t max_len) {
+Result get(const std::string& url, const Headers& headers, std::vector<uint8_t>& body, size_t max_len, bool allow_lan_http) {
     Result r;
-    esp_http_client_handle_t c = open_client(url, HTTP_METHOD_GET, headers);
+    esp_http_client_handle_t c = open_client(url, HTTP_METHOD_GET, headers, allow_lan_http);
     if (!c) {
         r.error = "invalid/non-TLS url";
         return r;
@@ -203,9 +221,9 @@ Result post_json(const std::string& url, const Headers& headers, const std::stri
 }
 
 Result download(const std::string& url, const Headers& headers, const std::string& path, uint64_t resume_from, uint64_t expected_size,
-                const std::function<bool()>& should_abort, uint64_t* bytes_written) {
+                const std::function<bool()>& should_abort, uint64_t* bytes_written, bool allow_lan_http) {
     Result r;
-    esp_http_client_handle_t c = open_client(url, HTTP_METHOD_GET, headers);
+    esp_http_client_handle_t c = open_client(url, HTTP_METHOD_GET, headers, allow_lan_http);
     if (!c) {
         r.error = "invalid/non-TLS url";
         return r;
@@ -223,6 +241,7 @@ Result download(const std::string& url, const Headers& headers, const std::strin
     }
     int64_t len = esp_http_client_fetch_headers(c);
     r.status = esp_http_client_get_status_code(c);
+    if (len >= 0) note_response(url.c_str(), r.status);
     bool append = resume_from > 0 && r.status == 206;
     if (!(r.status == 200 || r.status == 206) || len < 0) {
         if (r.error.empty()) r.error = "bad status";
@@ -244,10 +263,11 @@ Result download(const std::string& url, const Headers& headers, const std::strin
         esp_http_client_cleanup(c);
         return r;
     }
-    static constexpr size_t kBuf = 8192;
-    auto* buf = static_cast<char*>(malloc(kBuf));
+    static constexpr size_t kBuf = 16384;
+    auto* buf = static_cast<char*>(heap_caps_malloc(kBuf, MALLOC_CAP_SPIRAM));
+    setvbuf(f, nullptr, _IOFBF, 32 * 1024);  // whole-cluster SD writes
     uint64_t written = base;
-    int64_t t0 = esp_timer_get_time();
+    int64_t t0 = esp_timer_get_time(), sd_us = 0;
     while (buf) {
         if (should_abort && should_abort()) {
             r.status = 0;
@@ -261,20 +281,24 @@ Result download(const std::string& url, const Headers& headers, const std::strin
             break;
         }
         if (n == 0) break;
-        if (fwrite(buf, 1, n, f) != static_cast<size_t>(n)) {
+        int64_t w0 = esp_timer_get_time();
+        size_t wn = fwrite(buf, 1, n, f);
+        sd_us += esp_timer_get_time() - w0;
+        if (wn != static_cast<size_t>(n)) {
             r.status = 0;
             r.error = "SD write failed";
             break;
         }
         written += n;
         if ((written - base) / (512 * 1024) != (written - base - n) / (512 * 1024))
-            ESP_LOGI(TAG, "download: %llu KB in %lld ms", (unsigned long long)((written - base) / 1024), (esp_timer_get_time() - t0) / 1000);
+            ESP_LOGI(TAG, "download: %llu KB in %lld ms (SD writes %lld ms)", (unsigned long long)((written - base) / 1024),
+                     (esp_timer_get_time() - t0) / 1000, sd_us / 1000);
         taskYIELD();
     }
-    free(buf);
+    heap_caps_free(buf);
     fflush(f);
     fclose(f);
-    if (r.ok() && !esp_http_client_is_complete_data_received(c) && len > 0) {
+    if (r.ok() && (len > 0 || esp_http_client_is_chunked_response(c)) && !esp_http_client_is_complete_data_received(c)) {
         r.status = 0;
         r.error = "truncated";
     }

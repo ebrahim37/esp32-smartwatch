@@ -1,10 +1,15 @@
 // Home watch face: near-black, minimal colour, always-on friendly.
+#include <algorithm>
 #include <cmath>
+#include <vector>
 
 #include "app/services.hpp"
+#include "app/settings.hpp"
+#include "board.hpp"
 #include "app/state.hpp"
 #include "core/format.hpp"
 #include "esp_random.h"
+#include "esp_timer.h"
 #include "ui/ui.hpp"
 
 namespace ui {
@@ -20,11 +25,25 @@ lv_color_t level_color(core::Level l) {
     }
 }
 
+// Layout: three rows separated by horizontal dividers, with one vertical divider line shared
+// by all rows (kSplit) so they line up. Right-column text is right-aligned to kContentR, the
+// same edge as the weather row's wind/outlook text (checked against a photo of the watch).
+constexpr int kLeft = 24, kRight = 386, kSplit = 254, kContentR = 368;
+constexpr const char* kLinkSym = "\xEF\x83\x81";  // FontAwesome link (U+F0C1)
+constexpr const char* kWalkSym = "\xEF\x95\x94";  // FontAwesome walking (U+F554)
+constexpr const char* kBellOffSym = "\xEF\x87\xB6";  // FontAwesome bell-slash (U+F1F6)
+
+std::string thousands(uint32_t v) {
+    std::string s = std::to_string(v);
+    for (int i = static_cast<int>(s.size()) - 3; i > 0; i -= 3) s.insert(static_cast<size_t>(i), ",");
+    return s;
+}
+
 class Home : public Screen {
 public:
     bool has_top_bar() const override { return false; }
     bool scrollable() const override { return false; }
-    uint32_t tick_ms() const override { return 2000; }  // HDG refresh period
+    uint32_t tick_ms() const override { return 2000; }
 
     void build(lv_obj_t* c) override {
         // Everything lives in one container that is nudged a few pixels every minute to
@@ -34,46 +53,93 @@ public:
         lv_obj_set_size(face_, 410, 502);
         lv_obj_remove_flag(face_, LV_OBJ_FLAG_SCROLLABLE);
 
-        hdg_ = label(face_, "HDG: --", &font_inter_20, color::muted());
-        lv_obj_align(hdg_, LV_ALIGN_TOP_LEFT, 58, 28);
-        bat_lbl_ = label(face_, "BAT:", &font_inter_20, color::muted());
-        lv_obj_align(bat_lbl_, LV_ALIGN_TOP_RIGHT, -118, 28);
-        bat_ = label(face_, "--", &font_inter_20, color::muted());
-        lv_obj_align_to(bat_, bat_lbl_, LV_ALIGN_OUT_RIGHT_MID, 6, 0);
-
-        // Date + time are one tap target (opens Calendar).
+        // Row 1: date + time (opens Calendar) | LINK / NET.
         lv_obj_t* dt = lv_obj_create(face_);
         lv_obj_remove_style_all(dt);
-        lv_obj_set_size(dt, 380, 200);
-        lv_obj_align(dt, LV_ALIGN_TOP_MID, 0, 58);
+        lv_obj_set_size(dt, kSplit - kLeft - 8, 120);
+        lv_obj_set_pos(dt, kLeft, 26);
         lv_obj_add_flag(dt, LV_OBJ_FLAG_CLICKABLE);
         on_click(dt, [] { push(make_calendar()); });
         date_ = label(dt, "", &font_inter_24, color::red());
-        lv_obj_align(date_, LV_ALIGN_TOP_MID, 0, 6);
-        time_ = label(dt, "--:--", &font_digits_132, color::text());
-        lv_obj_align(time_, LV_ALIGN_TOP_MID, 0, 40);
+        lv_obj_set_pos(date_, 16, 4);
+        time_ = label(dt, "--:--", &font_digits_84, color::text());
+        lv_obj_set_pos(time_, 16, 40);
+        auto status = [&](const char* sym, int icon_x, const char* text, int y, lv_obj_t*& icon, lv_obj_t*& txt) {
+            icon = label(face_, sym, &font_inter_24, color::muted());
+            lv_obj_set_pos(icon, icon_x, y);
+            txt = label(face_, text, &font_inter_24);
+            lv_obj_align(txt, LV_ALIGN_TOP_RIGHT, kContentR - 410, y);
+        };
+        status(kLinkSym, kSplit + 20, "LINK", 54, link_icon_, link_txt_);
+        status(LV_SYMBOL_WIFI, kSplit + 18, "NET", 98, net_icon_, net_txt_);  // wider glyph: optically aligned
+        divs_.push_back(vdiv(40, 102));
+        divs_.push_back(hdiv(150));
 
-        // Weather block (opens Weather).
-        lv_obj_t* wx = lv_obj_create(face_);
-        lv_obj_remove_style_all(wx);
-        lv_obj_set_size(wx, 380, 130);
-        lv_obj_align(wx, LV_ALIGN_TOP_MID, 0, 262);
-        lv_obj_add_flag(wx, LV_OBJ_FLAG_CLICKABLE);
-        on_click(wx, [] { push(make_weather()); });
-        lv_obj_set_flex_flow(wx, LV_FLEX_FLOW_COLUMN);
-        lv_obj_set_flex_align(wx, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-        lv_obj_set_style_pad_row(wx, 6, 0);
-        wx_line_ = label(wx, "", &font_inter_24);
-        lv_label_set_recolor(wx_line_, true);
-        wind_uv_ = label(wx, "", &font_inter_20, color::muted());
-        lv_label_set_recolor(wind_uv_, true);
-        precip_ = label(wx, "", &font_inter_20, color::teal());
+        // Row 2: weather (opens Weather).
+        wx_ = weather_row(face_, kContentR - kLeft, kSplit - kLeft);
+        lv_obj_set_pos(wx_, kLeft, 160);
+        lv_obj_add_flag(wx_, LV_OBJ_FLAG_CLICKABLE);
+        on_click(wx_, [] { push(make_weather()); });
+        divs_.push_back(hdiv(226));
+
+        // Row 3: steps (opens Activity) | battery.
+        steps_ = lv_obj_create(face_);
+        lv_obj_remove_style_all(steps_);
+        lv_obj_set_size(steps_, kSplit - kLeft - 8, 50);
+        lv_obj_set_pos(steps_, kLeft, 236);
+        lv_obj_add_flag(steps_, LV_OBJ_FLAG_CLICKABLE);
+        on_click(steps_, [] { push(make_activity()); });
+        lv_obj_set_flex_flow(steps_, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(steps_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_END);
+        lv_obj_set_style_pad_left(steps_, 18, 0);
+        lv_obj_set_style_pad_bottom(steps_, 8, 0);
+        lv_obj_set_style_pad_column(steps_, 10, 0);
+        lv_obj_t* walk = label(steps_, kWalkSym, &font_inter_24);
+        lv_obj_set_style_pad_bottom(walk, 4, 0);
+        steps_n_ = label(steps_, "0", &font_inter_32);
+        lv_obj_t* unit = label(steps_, "steps", &font_inter_24, color::muted());
+        lv_obj_set_style_pad_bottom(unit, 3, 0);
+        steps_div_ = vdiv(238, 46);
+        divs_.push_back(steps_div_);
+        // Battery: outline, nub and a fill proportional to the charge.
+        bat_box_ = lv_obj_create(face_);
+        lv_obj_remove_style_all(bat_box_);
+        lv_obj_set_size(bat_box_, 40, 22);
+        lv_obj_set_pos(bat_box_, kSplit + 20, 250);
+        lv_obj_set_style_border_width(bat_box_, 2, 0);
+        lv_obj_set_style_border_color(bat_box_, color::text(), 0);
+        lv_obj_set_style_radius(bat_box_, 6, 0);
+        lv_obj_set_style_pad_all(bat_box_, 3, 0);
+        lv_obj_remove_flag(bat_box_, (lv_obj_flag_t)(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
+        bat_fill_ = lv_obj_create(bat_box_);
+        lv_obj_remove_style_all(bat_fill_);
+        lv_obj_set_style_bg_opa(bat_fill_, LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(bat_fill_, 3, 0);
+        lv_obj_set_height(bat_fill_, LV_PCT(100));
+        lv_obj_t* nub = lv_obj_create(face_);
+        lv_obj_remove_style_all(nub);
+        lv_obj_set_size(nub, 4, 10);
+        lv_obj_set_pos(nub, kSplit + 61, 256);
+        lv_obj_set_style_bg_opa(nub, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(nub, color::text(), 0);
+        lv_obj_set_style_radius(nub, 2, 0);
+        bat_ = label(face_, "--", &font_inter_24);
+        lv_obj_align(bat_, LV_ALIGN_TOP_RIGHT, kContentR - 410, 247);
+        divs_.push_back(hdiv(296));
 
         // Bottom shortcuts: Music, Notifications and the app launcher.
         lv_obj_t* music = round_button(face_, LV_SYMBOL_AUDIO, color::pink(), 72, [] { push(make_music()); });
         lv_obj_align(music, LV_ALIGN_BOTTOM_LEFT, 64, -22);
-        lv_obj_t* notifs = round_button(face_, LV_SYMBOL_BELL, color::purple(), 72, [] { push(make_notifications()); });
-        lv_obj_align(notifs, LV_ALIGN_BOTTOM_MID, 0, -22);
+        // Notifications: tap opens the list, hold toggles Do Not Disturb.
+        notifs_ = round_button(face_, LV_SYMBOL_BELL, color::purple(), 72, nullptr);
+        lv_obj_align(notifs_, LV_ALIGN_BOTTOM_MID, 0, -22);
+        on(notifs_, LV_EVENT_SHORT_CLICKED, [] { push(make_notifications()); });
+        on(notifs_, LV_EVENT_LONG_PRESSED, [this] {
+            settings::set_dnd(!settings::dnd());
+            board::vibrate(settings::dnd() ? 200 : 80);
+            update_dnd();
+        });
+        lv_obj_t* notifs = notifs_;
         lv_obj_t* apps = lv_button_create(face_);
         lv_obj_set_size(apps, 72, 72);
         lv_obj_set_style_radius(apps, LV_RADIUS_CIRCLE, 0);
@@ -93,12 +159,8 @@ public:
                 lv_obj_align(d, LV_ALIGN_CENTER, (col - 1) * 13, (r - 1) * 13);
                 lv_obj_remove_flag(d, LV_OBJ_FLAG_CLICKABLE);
             }
-        link_dot_ = lv_obj_create(face_);
-        lv_obj_remove_style_all(link_dot_);
-        lv_obj_set_size(link_dot_, 10, 10);
-        lv_obj_set_style_radius(link_dot_, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_bg_opa(link_dot_, LV_OPA_COVER, 0);
-        lv_obj_align(link_dot_, LV_ALIGN_TOP_MID, 0, 36);  // companion link, level with HDG / BAT
+        buttons_ = {music, notifs, apps};
+        update_dnd();
         refresh(0xFFFFFFFFu);
         tick();
     }
@@ -106,37 +168,56 @@ public:
     void refresh(uint32_t dirty) override {
         if (dirty & (app::kDirtyTime | app::kDirtySettings)) update_time();
         if (dirty & (app::kDirtyWeather | app::kDirtyTime)) update_weather();
-        if (dirty & app::kDirtyLink) {
-            app::Locked s;
-            bool up = s->link.state == app::LinkState::Ready;
-            lv_obj_set_style_bg_color(link_dot_, up ? color::green() : (s->link.has_peer ? color::orange() : color::card2()), 0);
-        }
+        if (dirty & (app::kDirtyLink | app::kDirtyCompanion)) update_status();
     }
 
     void tick() override {
-        char b[24];
-        snprintf(b, sizeof b, "HDG: %d\xC2\xB0", static_cast<int>(std::lround(services::heading_deg())) % 360);
-        set_text(hdg_, b);
         auto p = services::power();
-        // TODO(HARDWARE): no battery is fitted on the USB-powered prototype; show "USB"
-        // rather than inventing a percentage. Real telemetry appears automatically once a
+        // TODO(HARDWARE): no battery is fitted on the USB-powered prototype; show "-"
+        // ("-") rather than inventing a percentage. Real telemetry appears automatically once a
         // cell is connected to the AXP2101.
-        if (p.battery_present && p.percent >= 0) {
-            snprintf(b, sizeof b, "%d%%", p.percent);
-            set_text(bat_, b);
-            lv_obj_set_style_text_color(bat_, level_color(core::battery_level(p.percent)), 0);
-        } else {
-            set_text(bat_, "USB");
-            lv_obj_set_style_text_color(bat_, color::muted(), 0);
-        }
-        lv_obj_align_to(bat_, bat_lbl_, LV_ALIGN_OUT_RIGHT_MID, 6, 0);
+        int pct = p.battery_present && p.percent >= 0 ? p.percent : -1;
+        set_text(bat_, pct >= 0 ? std::to_string(pct) : "-");
+        lv_obj_set_width(bat_fill_, LV_PCT(pct >= 0 ? std::max(pct, 8) : 100));  // no battery (USB): full
+        lv_obj_set_style_bg_color(bat_fill_, pct >= 0 ? level_color(core::battery_level(pct)) : color::green(), 0);
+        set_text(steps_n_, thousands(services::steps_today()));
         if (++ticks_ % 30 == 0) {  // every 60 s
             lv_obj_set_pos(face_, static_cast<int>(esp_random() % 9) - 4, static_cast<int>(esp_random() % 9) - 4);
         }
         update_time();
+        update_status();  // NET goes grey 90 s after the last internet exchange
+    }
+
+    // Dimmed (inactive): date, time, weather icon + temperature, precipitation if coming, battery.
+    void on_dim(bool dimmed) override {
+        auto show = [dimmed](lv_obj_t* o) {
+            if (dimmed) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+            else lv_obj_remove_flag(o, LV_OBJ_FLAG_HIDDEN);
+        };
+        for (lv_obj_t* o : divs_) show(o);
+        for (lv_obj_t* o : buttons_) show(o);
+        for (lv_obj_t* o : {link_icon_, link_txt_, net_icon_, net_txt_, steps_}) show(o);
+        weather_row_compact(wx_, dimmed);
     }
 
 private:
+    lv_obj_t* vdiv(int y, int h) {
+        lv_obj_t* d = vdivider(face_, h);
+        lv_obj_set_pos(d, kSplit - 1, y);
+        return d;
+    }
+    lv_obj_t* hdiv(int y) {
+        lv_obj_t* d = hdivider(face_, kRight - kLeft);
+        lv_obj_set_pos(d, kLeft, y);
+        return d;
+    }
+
+    void update_dnd() {
+        bool on = settings::dnd();
+        set_text(lv_obj_get_child(notifs_, 0), on ? kBellOffSym : LV_SYMBOL_BELL);
+        lv_obj_set_style_bg_color(notifs_, on ? color::card2() : color::purple(), 0);
+    }
+
     void update_time() {
         struct tm lt;
         if (!services::local_now(lt)) {
@@ -150,28 +231,32 @@ private:
 
     void update_weather() {
         app::Locked s;
-        if (!s->weather_valid) {
-            set_text(wx_line_, "#8E8E93 weather unavailable#");
-            set_text(wind_uv_, "");
-            set_text(precip_, "");
-            return;
-        }
-        const auto& w = s->weather;
-        std::string desc = w.description.empty() ? core::wmo_description(w.wmo_code) : w.description;
-        char b[160];
-        snprintf(b, sizeof b, "%s #64D2FF %s#/#FFFFFF %s#/#FF453A %s#", desc.c_str(), core::fmt_temp(w.low_c10).c_str(),
-                 core::fmt_temp(w.temp_c10).c_str(), core::fmt_temp(w.high_c10).c_str());
-        set_text(wx_line_, b);
-        float uv = w.uv10 / 10.f;
-        lv_color_t uvc = level_color(core::uv_level(uv));
-        snprintf(b, sizeof b, "WIND: %d km/h   UV: #%06lX %d/10#", static_cast<int>(std::lround(w.wind_kmh10 / 10.0)),
-                 static_cast<unsigned long>(lv_color_to_u32(uvc) & 0xFFFFFF), static_cast<int>(std::lround(uv)));
-        set_text(wind_uv_, b);
-        set_text(precip_, core::fmt_precip(w.precip_kind, w.precip_in_min, w.precip_horizon_h));
+        weather_row_set(wx_, s->weather, s->weather_valid);
     }
 
-    lv_obj_t *face_ = nullptr, *hdg_ = nullptr, *bat_lbl_ = nullptr, *bat_ = nullptr, *date_ = nullptr, *time_ = nullptr;
-    lv_obj_t *wx_line_ = nullptr, *wind_uv_ = nullptr, *precip_ = nullptr, *link_dot_ = nullptr;
+    void update_status() {
+        bool up, peer, net;
+        {
+            app::Locked s;
+            up = s->link.state == app::LinkState::Ready;
+            peer = s->link.has_peer;
+            // Last successful internet exchange through the companion, aged to now.
+            int64_t age = s->companion_valid && s->companion.internet_age_s != UINT32_MAX
+                              ? s->companion.internet_age_s + (esp_timer_get_time() - s->companion_rx_us) / 1000000
+                              : INT64_MAX;
+            net = up && age < 90;
+        }
+        lv_obj_set_style_text_color(link_icon_, up ? color::green() : (peer ? color::orange() : color::muted()), 0);
+        lv_obj_set_style_text_color(link_txt_, up ? color::text() : color::muted(), 0);
+        lv_obj_set_style_text_color(net_icon_, net ? color::green() : color::muted(), 0);
+        lv_obj_set_style_text_color(net_txt_, net ? color::text() : color::muted(), 0);
+    }
+
+    lv_obj_t *face_ = nullptr, *date_ = nullptr, *time_ = nullptr, *wx_ = nullptr, *notifs_ = nullptr;
+    lv_obj_t *link_icon_ = nullptr, *link_txt_ = nullptr, *net_icon_ = nullptr, *net_txt_ = nullptr;
+    lv_obj_t *steps_ = nullptr, *steps_n_ = nullptr, *steps_div_ = nullptr;
+    lv_obj_t *bat_box_ = nullptr, *bat_fill_ = nullptr, *bat_ = nullptr;
+    std::vector<lv_obj_t*> divs_, buttons_;
     uint32_t ticks_ = 0;
 };
 

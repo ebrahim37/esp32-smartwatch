@@ -1,12 +1,15 @@
 // Maps: Apple-Watch-style full-screen map with location marker, relative heading, zoom,
-// immediate nearby search, results, place details and route display.
+// search with favourites and nearby places, place details and route display.
 //
 // Map imagery: 256 px SWT tiles (16-colour, zlib) rendered/re-coloured by the VPS helper from
 // self-built OSM data, cached on the companion's SD card and streamed over BLE. Each visible
 // slot inflates its tile once into an RGB565 buffer that LVGL draws directly.
+#include <algorithm>
 #include <cmath>
+#include <optional>
 
 #include "app/services.hpp"
+#include "app/settings.hpp"
 #include "app/state.hpp"
 #include "app/tiles.hpp"
 #include "ble/central.hpp"
@@ -31,6 +34,29 @@ struct TileSlot {
     lv_obj_t* img = nullptr;
     uint16_t* px = nullptr;  // 256x256 RGB565 in PSRAM, owned by the slot
 };
+
+// Favourite places, persisted on the watch (NVS blob "favs", encoded like search results).
+constexpr size_t kMaxFavs = 20;
+
+std::vector<swp::Place> load_favs() {
+    auto r = swp::decode_payload<swp::MapSearchResults>(settings::blob("favs"));
+    return r ? r->places : std::vector<swp::Place>{};
+}
+
+void save_favs(const std::vector<swp::Place>& v) {
+    swp::MapSearchResults r;
+    r.places = v;
+    settings::set_blob("favs", v.empty() ? std::vector<uint8_t>{} : swp::encode_payload(r));
+}
+
+bool same_place(const swp::Place& a, const swp::Place& b) {
+    return a.name == b.name && std::abs(a.lat_e7 - b.lat_e7) < 100 && std::abs(a.lon_e7 - b.lon_e7) < 100;  // ~1 m
+}
+
+// Destination of the route on the map, so Back from directions returns to the travel-mode choice.
+std::optional<swp::Place> g_route_place;
+
+Screen* make_place(const swp::Place& p, int pops);
 
 void release_slot(TileSlot& s) {
     if (s.dsc) {
@@ -110,7 +136,7 @@ public:
         lv_obj_align(status_, LV_ALIGN_CENTER, 0, 0);
 
         // Floating controls (back/home like every screen, zoom, search, recenter).
-        place_nav(round_button(c, LV_SYMBOL_LEFT, lv_color_hex(0x2C2C2E), kNavBtn, [] { pop(); }), false);
+        place_nav(round_button(c, LV_SYMBOL_LEFT, lv_color_hex(0x2C2C2E), kNavBtn, [] { back(); }), false);
         place_nav(round_button(c, LV_SYMBOL_HOME, lv_color_hex(0x2C2C2E), kNavBtn, [] { go_home(); }), true);
         lv_obj_t* plus = round_button(c, LV_SYMBOL_PLUS, lv_color_hex(0x2C2C2E), 64, [this] { zoom(+1); });
         lv_obj_align(plus, LV_ALIGN_RIGHT_MID, -14, -40);
@@ -176,6 +202,22 @@ private:
         self->layout(false);
     }
     static void on_release(lv_event_t* e) { static_cast<MapScreen*>(lv_event_get_user_data(e))->layout(true); }
+
+    // While directions are shown, Back ends them and returns to the travel-mode choice.
+    static void back() {
+        bool routing;
+        {
+            app::Locked s;
+            routing = s->route_valid || s->route_pending;
+            s->route_valid = s->route_pending = false;
+        }
+        if (!routing || !g_route_place) {
+            pop();
+            return;
+        }
+        app::mark(app::kDirtyRoute);
+        push(make_place(*g_route_place, 1));
+    }
 
     bool position(double& lat, double& lon) {
         app::Locked s;
@@ -428,7 +470,8 @@ void send_search(const std::string& q) {
 
 class PlaceScreen : public Screen {
 public:
-    explicit PlaceScreen(swp::Place p) : p_(std::move(p)) {}
+    // pops: screens to close when a route starts (this one, plus the search list if any).
+    PlaceScreen(swp::Place p, int pops) : p_(std::move(p)), pops_(pops) {}
     const char* title() const override { return p_.name.c_str(); }
     void build(lv_obj_t* c) override {
         lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
@@ -443,7 +486,8 @@ public:
         else snprintf(b, sizeof b, "%u m away", static_cast<unsigned>(p_.distance_m));
         label(c, b, &font_inter_20, color::muted());
         swp::Place p = p_;
-        auto go = [p](swp::TravelMode m) {
+        int pops = pops_;
+        auto go = [p, pops](swp::TravelMode m) {
             swp::RouteRequest r;
             {
                 app::Locked s;
@@ -458,41 +502,72 @@ public:
             r.to_lon_e7 = p.lon_e7;
             r.mode = static_cast<uint8_t>(m);
             swlink::send(r);
+            g_route_place = p;
             app::mark(app::kDirtyRoute);
-            pop_n(2);  // back to the map (this screen and the results list)
+            pop_n(pops);  // back to the map
         };
         pill_button(c, "Walk", color::blue(), [go] { go(swp::TravelMode::Walk); }, LV_PCT(100), 64);
         pill_button(c, "Cycle", color::card2(), [go] { go(swp::TravelMode::Bike); }, LV_PCT(100), 64);
         pill_button(c, "Drive", color::card2(), [go] { go(swp::TravelMode::Drive); }, LV_PCT(100), 64);
+        fav_ = pill_button(c, "", color::card2(), [this] { toggle_fav(); }, LV_PCT(100), 64);
+        update_fav();
     }
 
 private:
+    void toggle_fav() {
+        auto v = load_favs();
+        auto it = std::find_if(v.begin(), v.end(), [&](const swp::Place& f) { return same_place(f, p_); });
+        if (it != v.end()) {
+            v.erase(it);
+        } else if (v.size() >= kMaxFavs) {
+            toast("Favourites full (20)");
+            return;
+        } else {
+            v.push_back(p_);
+        }
+        save_favs(v);
+        update_fav();
+    }
+
+    void update_fav() {
+        auto v = load_favs();
+        bool fav = std::any_of(v.begin(), v.end(), [&](const swp::Place& f) { return same_place(f, p_); });
+        lv_obj_t* l = lv_obj_get_child(fav_, 0);
+        if (!l) return;
+        lv_label_set_text(l, fav ? UI_SYMBOL_STAR "  Remove Favourite" : UI_SYMBOL_STAR "  Add to Favourites");
+        lv_obj_set_style_text_color(l, fav ? color::yellow() : color::text(), 0);
+    }
+
     swp::Place p_;
+    int pops_;
+    lv_obj_t* fav_ = nullptr;
 };
 
-class SearchScreen : public Screen {
+Screen* make_place(const swp::Place& p, int pops) { return new PlaceScreen(p, pops); }
+
+void place_row(lv_obj_t* parent, const swp::Place& p, int pops, lv_color_t icon_bg, const char* icon, bool show_dist = true) {
+    char dist[24] = "";
+    if (show_dist && p.distance_m >= 1000) snprintf(dist, sizeof dist, "%.1f km", p.distance_m / 1000.0);
+    else if (show_dist) snprintf(dist, sizeof dist, "%u m", static_cast<unsigned>(p.distance_m));
+    swp::Place copy = p;
+    list_row(parent, p.name.c_str(), p.category.c_str(), dist, [copy, pops] { push(make_place(copy, pops)); }, icon_bg, icon);
+}
+
+// Results of one search (empty query = nearby places), as its own page.
+class ResultsScreen : public Screen {
 public:
-    const char* title() const override { return "Nearby"; }
+    explicit ResultsScreen(std::string q) : q_(std::move(q)) {}
+    const char* title() const override { return q_.empty() ? "Nearby" : "Results"; }
     void build(lv_obj_t* c) override {
         lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
         lv_obj_set_style_pad_all(c, 12, 0);
         lv_obj_set_style_pad_row(c, 8, 0);
-        list_row(c, "Search places", "Tap to type", nullptr, [] {
-            KeyboardOpts o;
-            o.label = "Search";
-            o.max_len = 60;
-            open_keyboard(o, [](const std::string& q) { send_search(q); });
-        }, color::blue(), LV_SYMBOL_KEYBOARD);
-        results_ = lv_obj_create(c);
-        lv_obj_remove_style_all(results_);
-        lv_obj_set_size(results_, LV_PCT(100), LV_SIZE_CONTENT);
-        lv_obj_set_flex_flow(results_, LV_FLEX_FLOW_COLUMN);
-        lv_obj_set_style_pad_row(results_, 8, 0);
+        list_ = c;
         refresh(0xFFFFFFFFu);
     }
     void refresh(uint32_t d) override {
         if (!(d & app::kDirtySearch)) return;
-        clear(results_);
+        clear(list_);
         swp::MapSearchResults r;
         bool pending;
         std::string err;
@@ -502,32 +577,116 @@ public:
             pending = s->search_pending;
             err = s->last_error_text;
         }
+        section_header(list_, q_.empty() ? "Places nearby" : ("Results for \"" + q_ + "\"").c_str());
         if (pending) {
-            section_header(results_, "Searching...");
-            return;
-        }
-        if (r.places.empty()) {
-            section_header(results_, err.empty() ? "No results" : err.c_str());
-            return;
-        }
-        section_header(results_, r.query.empty() ? "Nearby" : ("Results for \"" + r.query + "\"").c_str());
-        for (auto& p : r.places) {
-            char dist[24];
-            if (p.distance_m >= 1000) snprintf(dist, sizeof dist, "%.1f km", p.distance_m / 1000.0);
-            else snprintf(dist, sizeof dist, "%u m", static_cast<unsigned>(p.distance_m));
-            swp::Place copy = p;
-            list_row(results_, p.name.c_str(), p.category.c_str(), dist, [copy] { push(new PlaceScreen(copy)); }, color::red(), LV_SYMBOL_GPS);
+            section_header(list_, "Searching...");
+        } else if (r.query != q_ || r.places.empty()) {
+            section_header(list_, err.empty() ? "No results" : err.c_str());
+        } else {
+            for (auto& p : r.places) place_row(list_, p, 3, color::red(), LV_SYMBOL_GPS);
         }
     }
 
 private:
-    lv_obj_t* results_ = nullptr;
+    std::string q_;
+    lv_obj_t* list_ = nullptr;
 };
 
-void MapScreen::open_search() {
-    send_search("");  // immediately show nearby POIs/businesses
-    push(new SearchScreen());
-}
+class SearchScreen : public Screen {
+public:
+    const char* title() const override { return "Search"; }
+    void build(lv_obj_t* c) override {
+        lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_style_pad_all(c, 12, 0);
+        lv_obj_set_style_pad_row(c, 8, 0);
+        lv_obj_t* top = lv_obj_create(c);
+        lv_obj_remove_style_all(top);
+        lv_obj_set_size(top, LV_PCT(100), LV_SIZE_CONTENT);
+        lv_obj_set_flex_flow(top, LV_FLEX_FLOW_ROW);
+        lv_obj_set_style_pad_column(top, 8, 0);
+        lv_obj_t* search = list_row(top, "Search places", "Tap to type", nullptr, [] {
+            KeyboardOpts o;
+            o.label = "Search";
+            o.max_len = 60;
+            open_keyboard(o, [](const std::string& q) {
+                send_search(q);
+                push(new ResultsScreen(q));
+            });
+        }, color::blue(), LV_SYMBOL_KEYBOARD);
+        nearby_ = list_row(top, "Nearby", "...", nullptr, [this] {
+            bool have;
+            {
+                app::Locked s;
+                have = s->search_pending || (s->search.query.empty() && !s->search.places.empty());
+            }
+            if (!have) send_search("");  // the shown results are from a typed search, or failed
+            push(new ResultsScreen(""));
+        }, color::red(), LV_SYMBOL_GPS);
+        // 60/40 split.
+        lv_obj_set_width(search, 0);
+        lv_obj_set_flex_grow(search, 3);
+        lv_obj_set_width(nearby_, 0);
+        lv_obj_set_flex_grow(nearby_, 2);
+        favs_ = lv_obj_create(c);
+        lv_obj_remove_style_all(favs_);
+        lv_obj_set_size(favs_, LV_PCT(100), LV_SIZE_CONTENT);
+        lv_obj_set_flex_flow(favs_, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_style_pad_row(favs_, 8, 0);
+        send_search("");  // fills in the Nearby count
+        show_favourites();
+    }
+    void on_shown() override { show_favourites(); }  // favourites may have changed
+    void refresh(uint32_t d) override {
+        if (!(d & app::kDirtySearch)) return;
+        swp::MapSearchResults r;
+        bool pending;
+        {
+            app::Locked s;
+            r = s->search;
+            pending = s->search_pending;
+        }
+        if (pending || !r.query.empty()) return;  // a typed search doesn't change the count
+        char b[32];
+        if (r.places.empty()) snprintf(b, sizeof b, "None");
+        else snprintf(b, sizeof b, "%u POI%s", static_cast<unsigned>(r.places.size()), r.places.size() == 1 ? "" : "s");
+        // list_row: icon, then a column holding the title and subtitle labels.
+        lv_obj_t* col = lv_obj_get_child(nearby_, 1);
+        if (lv_obj_t* sub = col ? lv_obj_get_child(col, 1) : nullptr) set_text(sub, b);
+    }
+
+private:
+    void show_favourites() {
+        clear(favs_);
+        auto favs = load_favs();
+        section_header(favs_, "Favourites");
+        if (favs.empty()) {
+            lv_obj_t* l = label(favs_, "Open a place and tap Add to Favourites.", &font_inter_20, color::muted());
+            lv_obj_set_width(l, LV_PCT(100));
+            lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+            return;
+        }
+        int32_t lat = 0, lon = 0;
+        bool have;
+        {
+            app::Locked s;
+            have = s->position_valid;
+            lat = s->position.lat_e7;
+            lon = s->position.lon_e7;
+        }
+        for (auto& p : favs) {
+            if (have) {
+                p.distance_m = static_cast<uint32_t>(
+                    core::haversine_m(core::e7_to_deg(lat), core::e7_to_deg(lon), core::e7_to_deg(p.lat_e7), core::e7_to_deg(p.lon_e7)));
+            }
+            place_row(favs_, p, 2, color::yellow(), UI_SYMBOL_STAR, have);
+        }
+    }
+
+    lv_obj_t* nearby_ = nullptr;
+    lv_obj_t* favs_ = nullptr;
+};
+
+void MapScreen::open_search() { push(new SearchScreen()); }
 
 }  // namespace
 

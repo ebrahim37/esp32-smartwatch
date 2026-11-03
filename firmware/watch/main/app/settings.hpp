@@ -24,6 +24,17 @@ void init();
 swp::WatchSettings get();
 void set(const swp::WatchSettings& s);  // persists and applies timezone
 
+// Do Not Disturb (stored on its own, outside the WatchSettings blob): ntfy notifications are
+// acknowledged but neither stored nor shown.
+bool dnd();
+void set_dnd(bool on);
+
+// Passcode lock (basic deterrence only: stored in plain NVS). `locked` persists across reboots.
+std::string lock_pin();  // empty: no passcode
+void set_lock_pin(const std::string& pin);
+bool locked();
+void set_locked(bool on);
+
 Peer peer();
 void set_peer(const Peer& p);
 void clear_peer();

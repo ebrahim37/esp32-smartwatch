@@ -6,13 +6,11 @@
 #include <mutex>
 
 #include "ble_server.hpp"
-#include "ccore/backoff.hpp"
 #include "esp_a2dp_api.h"
 #include "esp_a2dp_legacy_api.h"
 #include "esp_avrc_api.h"
 #include "esp_gap_bt_api.h"
 #include "esp_log.h"
-#include "esp_random.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/timers.h"
@@ -28,17 +26,29 @@ swp::AudioDevices devs;
 uint8_t peer[6] = {};
 bool have_peer = false;
 std::string peer_name;
-bool user_disconnected = false;
 std::atomic<bool> is_connected{false};
 std::atomic<bool> is_streaming{false};
+// AVRCP play-status notification registered by the headphones (they only send button presses
+// to a source that reports its playback status).
+std::atomic<bool> play_status_registered{false};
+
+void notify_play_status() {
+    if (!play_status_registered.exchange(false)) return;  // AVRCP notifications are one-shot
+    esp_avrc_rn_param_t rn = {};
+    rn.playback = is_streaming.load() ? ESP_AVRC_PLAYBACK_PLAYING : ESP_AVRC_PLAYBACK_PAUSED;
+    esp_avrc_tg_send_rn_rsp(ESP_AVRC_RN_PLAY_STATUS_CHANGE, ESP_AVRC_RN_RSP_CHANGED, &rn);
+}
 std::atomic<bool> media_ready{false};
 std::atomic<bool> want_stream{false};
 std::atomic<uint8_t> vol{80};
 bool abs_vol_supported = false;
 RemoteCmd remote = nullptr;
 PcmSource source = nullptr;
-TimerHandle_t retry_timer = nullptr;
-ccore::Backoff reconnect_backoff(5000, 300000, 20);
+// On-demand link: the companion connects when playback starts and lets go after a minute
+// without audio, so headphones shared with a phone (AirPods) aren't taken away while the
+// phone uses them. Nothing reconnects automatically.
+constexpr uint32_t kIdleReleaseMs = 60 * 1000;
+TimerHandle_t idle_timer = nullptr;
 
 void publish() {
     swp::AudioStatus s;
@@ -84,17 +94,13 @@ void load_peer() {
     nvs_close(h);
 }
 
-void schedule_reconnect() {
-    if (!have_peer || user_disconnected || is_connected.load()) return;
-    uint32_t d = reconnect_backoff.next(esp_random());
-    xTimerChangePeriod(retry_timer, pdMS_TO_TICKS(d), 0);
-    xTimerStart(retry_timer, 0);
-}
+void arm_idle_release() { xTimerReset(idle_timer, 0); }
 
-void retry_cb(TimerHandle_t) {
-    if (have_peer && !user_disconnected && !is_connected.load()) {
-        set_state(swp::SinkState::Connecting);
-        esp_a2d_source_connect(peer);
+void idle_cb(TimerHandle_t) {
+    if (is_connected.load() && !is_streaming.load() && !want_stream.load()) {
+        ESP_LOGI(TAG, "no audio for %u s; releasing %s", static_cast<unsigned>(kIdleReleaseMs / 1000), peer_name.c_str());
+        set_state(swp::SinkState::Disconnecting);
+        esp_a2d_source_disconnect(peer);
     }
 }
 
@@ -169,9 +175,9 @@ void gap_cb(esp_bt_gap_cb_event_t ev, esp_bt_gap_cb_param_t* p) {
 void a2d_cb(esp_a2d_cb_event_t ev, esp_a2d_cb_param_t* p) {
     switch (ev) {
         case ESP_A2D_CONNECTION_STATE_EVT:
+            ESP_LOGI(TAG, "A2DP connection state %d", static_cast<int>(p->conn_stat.state));
             if (p->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
                 is_connected.store(true);
-                reconnect_backoff.reset();
                 memcpy(peer, p->conn_stat.remote_bda, 6);
                 if (!have_peer) {
                     have_peer = true;
@@ -183,21 +189,27 @@ void a2d_cb(esp_a2d_cb_event_t ev, esp_a2d_cb_param_t* p) {
                 set_state(swp::SinkState::Connected);
                 media_ready.store(false);
                 esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_CHECK_SRC_RDY);
+                arm_idle_release();
             } else if (p->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
-                bool was = is_connected.exchange(false);
+                is_connected.store(false);
                 is_streaming.store(false);
                 media_ready.store(false);
-                set_state(swp::SinkState::Idle);
-                if (was || !user_disconnected) schedule_reconnect();
+                xTimerStop(idle_timer, 0);
+                set_state(swp::SinkState::Idle);  // e.g. the phone took the headphones: no reconnect
             } else if (p->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTING) {
                 set_state(swp::SinkState::Connecting);
             }
             break;
         case ESP_A2D_AUDIO_STATE_EVT:
             is_streaming.store(p->audio_stat.state == ESP_A2D_AUDIO_STATE_STARTED);
+            ESP_LOGI(TAG, "audio %s", is_streaming.load() ? "started" : "suspended");
+            notify_play_status();
+            if (is_streaming.load()) xTimerStop(idle_timer, 0);
+            else arm_idle_release();
             set_state(is_streaming.load() ? swp::SinkState::Streaming : swp::SinkState::Connected);
             break;
         case ESP_A2D_MEDIA_CTRL_ACK_EVT:
+            ESP_LOGI(TAG, "media ctrl %d ack %d", static_cast<int>(p->media_ctrl_stat.cmd), static_cast<int>(p->media_ctrl_stat.status));
             if (p->media_ctrl_stat.cmd == ESP_A2D_MEDIA_CTRL_CHECK_SRC_RDY && p->media_ctrl_stat.status == ESP_A2D_MEDIA_CTRL_ACK_SUCCESS) {
                 media_ready.store(true);
                 if (want_stream.load()) esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_START);
@@ -217,7 +229,12 @@ int32_t data_cb(uint8_t* buf, int32_t len) {
 
 void tg_cb(esp_avrc_tg_cb_event_t ev, esp_avrc_tg_cb_param_t* p) {
     switch (ev) {
+        case ESP_AVRC_TG_CONNECTION_STATE_EVT:
+            ESP_LOGI(TAG, "AVRCP target %s", p->conn_stat.connected ? "connected" : "disconnected");
+            if (!p->conn_stat.connected) play_status_registered.store(false);
+            break;
         case ESP_AVRC_TG_PASSTHROUGH_CMD_EVT:
+            ESP_LOGI(TAG, "headphone button 0x%02x %s", p->psth_cmd.key_code, p->psth_cmd.key_state == ESP_AVRC_PT_CMD_STATE_PRESSED ? "pressed" : "released");
             if (p->psth_cmd.key_state == ESP_AVRC_PT_CMD_STATE_PRESSED && remote) {
                 switch (p->psth_cmd.key_code) {
                     case ESP_AVRC_PT_CMD_PLAY: remote(swp::PlaybackCmd::Resume); break;
@@ -229,6 +246,23 @@ void tg_cb(esp_avrc_tg_cb_event_t ev, esp_avrc_tg_cb_param_t* p) {
                 }
             }
             break;
+        case ESP_AVRC_TG_REMOTE_FEATURES_EVT:
+            ESP_LOGI(TAG, "AVRCP controller features 0x%x", (unsigned)p->rmt_feats.feat_mask);
+            break;
+        case ESP_AVRC_TG_REGISTER_NOTIFICATION_EVT: {
+            ESP_LOGI(TAG, "headphones registered for AVRCP event %u", p->reg_ntf.event_id);
+            esp_avrc_rn_param_t rn = {};
+            if (p->reg_ntf.event_id == ESP_AVRC_RN_PLAY_STATUS_CHANGE) {
+                play_status_registered.store(true);
+                rn.playback = is_streaming.load() ? ESP_AVRC_PLAYBACK_PLAYING : ESP_AVRC_PLAYBACK_PAUSED;
+            } else if (p->reg_ntf.event_id == ESP_AVRC_RN_VOLUME_CHANGE) {
+                rn.volume = vol.load();
+            } else {
+                break;
+            }
+            esp_avrc_tg_send_rn_rsp(static_cast<esp_avrc_rn_event_ids_t>(p->reg_ntf.event_id), ESP_AVRC_RN_RSP_INTERIM, &rn);
+            break;
+        }
         case ESP_AVRC_TG_SET_ABSOLUTE_VOLUME_CMD_EVT:
             vol.store(p->set_abs_vol.volume);
             break;
@@ -244,7 +278,11 @@ void ct_cb(esp_avrc_ct_cb_event_t ev, esp_avrc_ct_cb_param_t* p) {
             break;
         case ESP_AVRC_CT_GET_RN_CAPABILITIES_RSP_EVT:
             abs_vol_supported = esp_avrc_rn_evt_bit_mask_operation(ESP_AVRC_BIT_MASK_OP_TEST, &p->get_rn_caps_rsp.evt_set, ESP_AVRC_RN_VOLUME_CHANGE);
-            if (abs_vol_supported) esp_avrc_ct_send_register_notification_cmd(1, ESP_AVRC_RN_VOLUME_CHANGE, 0);
+            ESP_LOGI(TAG, "headphones %s absolute volume (volume %u/127)", abs_vol_supported ? "support" : "don't support", vol.load());
+            if (abs_vol_supported) {
+                esp_avrc_ct_send_register_notification_cmd(1, ESP_AVRC_RN_VOLUME_CHANGE, 0);
+                esp_avrc_ct_send_set_absolute_volume_cmd(2, vol.load());  // start at our volume, not wherever the phone left it
+            }
             break;
         case ESP_AVRC_CT_CHANGE_NOTIFY_EVT:
             if (p->change_ntf.event_id == ESP_AVRC_RN_VOLUME_CHANGE) {
@@ -262,7 +300,7 @@ void ct_cb(esp_avrc_ct_cb_event_t ev, esp_avrc_ct_cb_param_t* p) {
 void init(PcmSource src) {
     source = src;
     load_peer();
-    retry_timer = xTimerCreate("a2dp_retry", pdMS_TO_TICKS(5000), pdFALSE, nullptr, retry_cb);
+    idle_timer = xTimerCreate("a2dp_idle", pdMS_TO_TICKS(kIdleReleaseMs), pdFALSE, nullptr, idle_cb);
     esp_bt_gap_set_device_name("SW Companion");
     esp_bt_gap_register_callback(gap_cb);
     esp_bt_sp_param_t param = ESP_BT_SP_IOCAP_MODE;
@@ -275,9 +313,13 @@ void init(PcmSource src) {
     esp_avrc_tg_register_callback(tg_cb);
     esp_avrc_rn_evt_cap_mask_t evt_set = {};
     esp_avrc_rn_evt_bit_mask_operation(ESP_AVRC_BIT_MASK_OP_SET, &evt_set, ESP_AVRC_RN_VOLUME_CHANGE);
+    esp_avrc_rn_evt_bit_mask_operation(ESP_AVRC_BIT_MASK_OP_SET, &evt_set, ESP_AVRC_RN_PLAY_STATUS_CHANGE);
     esp_avrc_tg_set_rn_evt_cap(&evt_set);
+    // Button presses the stack forwards to us (its default supported set is empty, so every
+    // press would be answered "not implemented").
     esp_avrc_psth_bit_mask_t cmd_set = {};
-    esp_avrc_tg_get_psth_cmd_filter(ESP_AVRC_PSTH_FILTER_SUPPORTED_CMD, &cmd_set);
+    for (auto k : {ESP_AVRC_PT_CMD_PLAY, ESP_AVRC_PT_CMD_PAUSE, ESP_AVRC_PT_CMD_STOP, ESP_AVRC_PT_CMD_FORWARD, ESP_AVRC_PT_CMD_BACKWARD})
+        esp_avrc_psth_bit_mask_operation(ESP_AVRC_BIT_MASK_OP_SET, &cmd_set, k);
     esp_avrc_tg_set_psth_cmd_filter(ESP_AVRC_PSTH_FILTER_SUPPORTED_CMD, &cmd_set);
 
     esp_a2d_register_callback(a2d_cb);
@@ -290,11 +332,6 @@ void init(PcmSource src) {
         st.remembered = have_peer;
         memcpy(st.bda, peer, 6);
         st.name = peer_name;
-    }
-    if (have_peer) {
-        ESP_LOGI(TAG, "reconnecting to remembered sink %s", peer_name.c_str());
-        xTimerChangePeriod(retry_timer, pdMS_TO_TICKS(3000), 0);
-        xTimerStart(retry_timer, 0);
     }
 }
 
@@ -311,7 +348,6 @@ void scan(uint8_t seconds) {
 
 void connect(const uint8_t bda[6]) {
     esp_bt_gap_cancel_discovery();
-    user_disconnected = false;
     {
         std::lock_guard<std::mutex> g(mu);
         if (have_peer && memcmp(peer, bda, 6) != 0 && is_connected.load()) esp_a2d_source_disconnect(peer);
@@ -320,14 +356,26 @@ void connect(const uint8_t bda[6]) {
             if (memcmp(d.bda, bda, 6) == 0) peer_name = d.name;
         have_peer = true;
     }
-    reconnect_backoff.reset();
     set_state(swp::SinkState::Connecting);
     esp_a2d_source_connect(peer);
 }
 
+bool ensure_connected(uint32_t timeout_ms) {
+    if (is_connected.load()) return true;
+    if (!have_peer) {
+        ESP_LOGW(TAG, "no remembered headphones; pair them under Settings > Connections");
+        return false;
+    }
+    ESP_LOGI(TAG, "connecting to %s for playback", peer_name.c_str());
+    set_state(swp::SinkState::Connecting);
+    esp_a2d_source_connect(peer);
+    for (uint32_t t = 0; t < timeout_ms && !is_connected.load(); t += 50) vTaskDelay(pdMS_TO_TICKS(50));
+    if (!is_connected.load()) ESP_LOGW(TAG, "%s did not accept the connection within %u ms", peer_name.c_str(), static_cast<unsigned>(timeout_ms));
+    return is_connected.load();
+}
+
 void disconnect() {
-    user_disconnected = true;
-    xTimerStop(retry_timer, 0);
+    xTimerStop(idle_timer, 0);
     if (is_connected.load()) {
         set_state(swp::SinkState::Disconnecting);
         esp_a2d_source_disconnect(peer);
@@ -346,6 +394,7 @@ void forget(const uint8_t bda[6]) {
 }
 
 bool connected() { return is_connected.load(); }
+bool remote_volume() { return abs_vol_supported; }
 bool streaming() { return is_streaming.load(); }
 
 void start_stream() {
@@ -359,6 +408,7 @@ void start_stream() {
 void suspend_stream() {
     want_stream.store(false);
     if (is_streaming.load()) esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_SUSPEND);
+    if (is_connected.load()) arm_idle_release();
 }
 
 void set_volume(uint8_t v) {

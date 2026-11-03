@@ -13,6 +13,9 @@ namespace {
 
 // ---- Weather ---------------------------------------------------------------------------
 
+// Watch-face weather row geometry (see home.cpp), reused so the two look identical.
+constexpr int kWxRowW = 344, kWxRowSplit = 230;
+
 class WeatherScreen : public Screen {
 public:
     const char* title() const override { return "Weather"; }
@@ -40,23 +43,16 @@ public:
             label(c_, "The companion fetches it from the VPS helper.", &font_inter_16, color::muted());
             return;
         }
-        std::string desc = w.description.empty() ? core::wmo_description(w.wmo_code) : w.description;
-        label(c_, (core::fmt_temp(w.temp_c10) + "\xC2\xB0").c_str(), &font_digits_64);
-        label(c_, desc.c_str(), &font_inter_24);
-        lv_obj_t* lh = label(c_, "", &font_inter_20);
-        lv_label_set_recolor(lh, true);
-        std::string t = "#64D2FF L " + core::fmt_temp(w.low_c10) + "\xC2\xB0#   #FF453A H " + core::fmt_temp(w.high_c10) + "\xC2\xB0#";
-        lv_label_set_text(lh, t.c_str());
+        lv_obj_t* wx = weather_row(c_, kWxRowW, kWxRowSplit);  // same row as the watch face
+        lv_obj_set_style_translate_x(wx, -10, 0);
+        weather_row_set(wx, w, true);
         char b[96];
-        snprintf(b, sizeof b, "Wind %d km/h  \xC2\xB7  UV %.0f", static_cast<int>(std::lround(w.wind_kmh10 / 10.0)), w.uv10 / 10.0);
-        label(c_, b, &font_inter_20, color::muted());
-        label(c_, core::fmt_precip(w.precip_kind, w.precip_in_min, w.precip_horizon_h).c_str(), &font_inter_20, color::teal());
 
         if (!w.hours.empty()) {
-            section_header(c_, "Next hours");
+            section_header(c_, "Hourly");
             lv_obj_t* row = lv_obj_create(c_);
             lv_obj_remove_style_all(row);
-            lv_obj_set_size(row, LV_PCT(100), 100);
+            lv_obj_set_size(row, LV_PCT(100), 130);
             lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
             lv_obj_set_style_pad_column(row, 6, 0);
             lv_obj_set_scroll_dir(row, LV_DIR_HOR);
@@ -64,21 +60,25 @@ public:
             for (size_t i = 0; i < w.hours.size() && i < 12; ++i) {
                 const auto& h = w.hours[i];
                 lv_obj_t* cell = card(row);
-                lv_obj_set_size(cell, 76, 96);
+                lv_obj_set_size(cell, 76, 126);
+                lv_obj_set_style_pad_ver(cell, 8, 0);
+                lv_obj_set_style_pad_hor(cell, 4, 0);
+                lv_obj_set_style_pad_row(cell, 2, 0);
                 lv_obj_set_flex_flow(cell, LV_FLEX_FLOW_COLUMN);
                 lv_obj_set_flex_align(cell, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
                 time_t tt = h.time;
                 struct tm lt;
                 localtime_r(&tt, &lt);
-                snprintf(b, sizeof b, "%d:00", lt.tm_hour);
-                label(cell, b, &font_inter_16, color::muted());
+                label(cell, core::fmt_hour12(lt.tm_hour).c_str(), &font_inter_16, color::muted());
+                bool night = lt.tm_hour < 6 || lt.tm_hour >= 20;
+                label(cell, wx_icon(h.wmo_code, night), &font_inter_24, wx_color(h.wmo_code, night));
                 label(cell, (core::fmt_temp(h.temp_c10) + "\xC2\xB0").c_str(), &font_inter_20);
                 snprintf(b, sizeof b, "%u%%", h.precip_prob);
                 label(cell, b, &font_inter_16, color::teal());
             }
         }
         if (!w.days.empty()) {
-            section_header(c_, "Forecast");
+            section_header(c_, "7-Day");
             static const char* wd[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
             time_t now = time(nullptr);
             struct tm today;
@@ -87,10 +87,14 @@ public:
                 time_t tt = d2.date;  // UTC midnight of the forecast's calendar day
                 struct tm lt;
                 gmtime_r(&tt, &lt);
-                std::string sub = std::string(core::wmo_description(d2.wmo_code)) + "  " + std::to_string(d2.precip_prob) + "% precip.";
+                std::string sub = std::to_string(d2.precip_prob) + "% precip.";
                 std::string val = core::fmt_temp(d2.low_c10) + "\xC2\xB0 / " + core::fmt_temp(d2.high_c10) + "\xC2\xB0";
                 bool is_today = lt.tm_year == today.tm_year && lt.tm_yday == today.tm_yday;
-                list_row(c_, is_today ? "Today" : wd[lt.tm_wday % 7], sub.c_str(), val.c_str());
+                lv_obj_t* r = list_row(c_, is_today ? "Today" : wd[lt.tm_wday % 7], sub.c_str(), val.c_str(), nullptr, color::card(),
+                                       wx_icon(d2.wmo_code, false));
+                lv_obj_t* ic = lv_obj_get_child(lv_obj_get_child(r, 0), 0);  // list_row's icon label
+                lv_obj_set_style_text_font(ic, &font_inter_24, 0);
+                lv_obj_set_style_text_color(ic, wx_color(d2.wmo_code, false), 0);
             }
         }
         if (w.updated_at) {

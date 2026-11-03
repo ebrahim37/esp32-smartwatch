@@ -20,4 +20,8 @@ struct SubsonicAuth {
 std::string subsonic_url(const std::string& base, const std::string& method, const SubsonicAuth& auth,
                          const std::string& salt, const std::string& extra_query = "");
 
+// True for http:// URLs whose host is a literal private IPv4 address (10/8, 172.16/12,
+// 192.168/16): Navidrome on the home LAN may be used without TLS. Everything else must be https.
+bool lan_http_url(const std::string& url);
+
 }  // namespace ccore

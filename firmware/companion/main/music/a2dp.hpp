@@ -20,6 +20,9 @@ void init(PcmSource src);  // after bt_core::init()
 
 void scan(uint8_t seconds);
 void connect(const uint8_t bda[6]);
+// Connects to the remembered headphones if needed (blocks up to timeout_ms). The link is
+// released again after a minute without audio; nothing reconnects on its own.
+bool ensure_connected(uint32_t timeout_ms);
 void disconnect();
 void forget(const uint8_t bda[6]);
 
@@ -29,6 +32,7 @@ void start_stream();    // request the media channel (no-op if already started)
 void suspend_stream();
 void set_volume(uint8_t v);  // 0..127, AVRCP absolute volume if supported
 uint8_t volume();
+bool remote_volume();  // the headphones apply the volume (AVRCP absolute volume); else scale in software
 
 swp::AudioStatus status();
 swp::AudioDevices devices();

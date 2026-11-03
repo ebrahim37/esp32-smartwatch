@@ -18,11 +18,12 @@ const AppEntry kApps[] = {
     {"Timer", LV_SYMBOL_LOOP, 0xFF9F0A, make_timer},
     {"Stopwatch", LV_SYMBOL_PLAY, 0xFF9F0A, make_stopwatch},
     {"Alarm", LV_SYMBOL_BELL, 0xFF9F0A, make_alarms},
-    {"Calculator", LV_SYMBOL_PLUS, 0x8E8E93, make_calculator},
+    {"Lock", UI_SYMBOL_LOCK, 0x0A84FF, make_lock},
     {"Calendar", LV_SYMBOL_LIST, 0xFF453A, make_calendar},
     {"Alerts", LV_SYMBOL_BELL, 0xBF5AF2, make_notifications},
     {"Activity", LV_SYMBOL_CHARGE, 0x30D158, make_activity},
     {"Memos", LV_SYMBOL_EDIT, 0x636366, make_voice_memos},
+    {"Calculator", LV_SYMBOL_PLUS, 0x8E8E93, make_calculator},
     {"Settings", LV_SYMBOL_SETTINGS, 0x636366, make_settings},
 };
 
@@ -52,7 +53,9 @@ public:
             lv_obj_t* n = label(cell, a.name, &font_inter_16, color::text());
             lv_obj_align(n, LV_ALIGN_BOTTOM_MID, 0, 0);
             auto make = a.make;
-            on_click(cell, [make] { push(make()); });
+            on_click(cell, [make] {
+                if (Screen* s = make()) push(s);  // some apps act without a screen (Lock)
+            });
         }
     }
 };

@@ -1,6 +1,7 @@
 #include "music/player.hpp"
 
 #include <atomic>
+#include <type_traits>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -76,14 +77,27 @@ int32_t pcm_source(uint8_t* buf, int32_t len) {
         alert_phase.store(ph, std::memory_order_relaxed);
         alert_left.store(left - static_cast<uint32_t>(n), std::memory_order_relaxed);
     }
+    if (!a2dp::remote_volume()) {
+        // Headphones without absolute volume: apply it here (squared for a perceptual curve).
+        int32_t v = a2dp::volume();
+        int32_t g = v * v * 32768 / (127 * 127);
+        if (g < 32768)
+            for (size_t i = 0; i < want * 2; ++i) out[i] = static_cast<int16_t>(out[i] * g / 32768);
+    }
     return len;
 }
 
 // ---- Player state (decoder task) ---------------------------------------------------------
 enum class Op : uint8_t { Command, Remote };
+// FreeRTOS queues copy items bytewise, so the queued command must be plain data (a
+// std::string member would arrive as a dangling pointer and corrupt the heap).
 struct Msg {
-    swp::PlaybackCommand cmd;
+    uint8_t cmd;
+    uint32_t arg;
+    char str[64];  // playlist id
+    int64_t queued_us;
 };
+static_assert(std::is_trivially_copyable_v<Msg>);
 QueueHandle_t q;
 
 std::mutex mu;
@@ -110,6 +124,11 @@ int64_t last_publish_us = 0;
 
 void publish() {
     swp::PlaybackStatus s;
+    std::vector<swp::UpNextItem> up;
+    for (uint16_t i : order.upcoming(4)) {
+        library::Track t;
+        if (library::track_at(playlist, i, t)) up.push_back({t.title, t.artist});
+    }
     {
         std::lock_guard<std::mutex> g(mu);
         st.position_ms = static_cast<uint32_t>(played_frames.load() * 1000 / kRate);
@@ -117,6 +136,7 @@ void publish() {
         st.sink_connected = a2dp::connected();
         st.shuffle = order.shuffle();
         st.repeat = static_cast<uint8_t>(order.repeat());
+        st.up_next = std::move(up);
         s = st;
     }
     last_publish_us = esp_timer_get_time();
@@ -179,6 +199,13 @@ bool open_track(uint32_t start_ms) {
     }
     skip_until_ms = 0;
     uint32_t dur_ms = cur.duration_s * 1000;
+    // Subsonic durations are whole seconds. Our 128 kbps CBR MP3s give the exact length from the
+    // file size (8 bits / 128 kbit/s = 1 ms per 16 bytes); used when it agrees with the server
+    // (an original passed through untranscoded has a different bitrate).
+    if (cur.suffix == "mp3" && cur.size > 0) {
+        uint32_t est = static_cast<uint32_t>(cur.size / 16);
+        if (est + 3000 > dur_ms && est < dur_ms + 3000) dur_ms = est;
+    }
     if (start_ms > 0 && dur_ms > 0) {
         if (cur.suffix == "mp3") {
             // MP3 frames are self-synchronising: jump to the proportional byte offset.
@@ -210,7 +237,10 @@ bool open_track(uint32_t start_ms) {
 bool advance(bool user) {
     for (uint16_t tries = 0; tries <= order.size(); ++tries) {
         if (!order.next(user)) return false;
-        if (open_track(0)) return true;
+        if (open_track(0)) {
+            if (user || order.repeat() != ccore::Repeat::One) order.reshuffle_upcoming(esp_random());
+            return true;
+        }
         user = true;  // skip unavailable tracks even in repeat-one
     }
     return false;
@@ -306,13 +336,17 @@ bool decode_step() {
 
 void handle(const swp::PlaybackCommand& c) {
     using swp::PlaybackCmd;
+    ESP_LOGI(TAG, "command %u (arg %u%s%s)", static_cast<unsigned>(c.cmd), static_cast<unsigned>(c.arg), c.str.empty() ? "" : ", ",
+             c.str.c_str());
     switch (static_cast<PlaybackCmd>(c.cmd)) {
         case PlaybackCmd::PlayPlaylist: {
-            playlist = c.str.empty() ? library::first_playlist_id() : c.str;
+            playlist = c.str.empty() ? library::kAllSongsId : c.str;
             uint16_t n = library::size(playlist);
             if (n == 0) return set_state(swp::PlayState::Error, "playlist not synced");
-            order.load(n, static_cast<uint16_t>(c.arg), order.shuffle(), esp_random());
-            if (!a2dp::connected()) return set_state(swp::PlayState::Error, "no headphones connected");
+            // arg UINT32_MAX: start from a random track (Shuffle buttons).
+            uint16_t start = c.arg == UINT32_MAX ? static_cast<uint16_t>(esp_random() % n) : static_cast<uint16_t>(c.arg);
+            order.load(n, start, order.shuffle(), esp_random());
+            if (!a2dp::ensure_connected(8000)) return set_state(swp::PlayState::Error, "headphones not available");
             if (!open_track(0) && !advance(true)) return set_state(swp::PlayState::Error, "no downloaded tracks");
             playing.store(true);
             a2dp::start_stream();
@@ -329,9 +363,14 @@ void handle(const swp::PlaybackCommand& c) {
         case PlaybackCmd::Resume:
             if (!file) {
                 if (!playlist.empty()) return handle({static_cast<uint8_t>(PlaybackCmd::PlayPlaylist), st.index, playlist});
-                return;
+                // Nothing loaded (e.g. after a reboot): shuffle All Songs from a random track.
+                uint16_t n = library::size(library::kAllSongsId);
+                if (n == 0) return set_state(swp::PlayState::Error, "no songs downloaded yet");
+                order.set_shuffle(true, esp_random());
+                order.set_repeat(ccore::Repeat::All);
+                return handle({static_cast<uint8_t>(PlaybackCmd::PlayPlaylist), UINT32_MAX, library::kAllSongsId});
             }
-            if (!a2dp::connected()) return set_state(swp::PlayState::Error, "no headphones connected");
+            if (!a2dp::ensure_connected(8000)) return set_state(swp::PlayState::Error, "headphones not available");
             playing.store(true);
             a2dp::start_stream();
             set_state(swp::PlayState::Playing);
@@ -349,6 +388,19 @@ void handle(const swp::PlaybackCommand& c) {
             bool restart = played_frames.load() > 3ull * kRate;
             order.prev(restart);
             if (!open_track(0)) advance(true);
+            else if (!restart) order.reshuffle_upcoming(esp_random());
+            publish();
+            break;
+        }
+        case PlaybackCmd::SkipTo: {
+            if (c.arg < 1 || c.arg > 4 || order.empty()) break;
+            for (uint32_t k = 1; k < c.arg; ++k) order.next(true);
+            if (!advance(true)) {
+                playing.store(false);
+                close_track();
+                a2dp::suspend_stream();
+                return set_state(swp::PlayState::Stopped);
+            }
             publish();
             break;
         }
@@ -388,7 +440,16 @@ void task(void*) {
     for (;;) {
         bool busy = decoding && playing.load();
         if (xQueueReceive(q, &m, busy ? 0 : pdMS_TO_TICKS(500)) == pdTRUE) {
-            handle(m.cmd);
+            // Starting playback can wait seconds for the headphones to connect; a play/pause tap
+            // made meanwhile (the watch looked unresponsive) would immediately pause it again.
+            static int64_t started_us = 0;
+            bool starting = m.cmd == static_cast<uint8_t>(swp::PlaybackCmd::PlayPlaylist) || m.cmd == static_cast<uint8_t>(swp::PlaybackCmd::Resume);
+            if (m.cmd == static_cast<uint8_t>(swp::PlaybackCmd::Toggle) && m.queued_us < started_us) {
+                ESP_LOGI(TAG, "ignoring play/pause tapped while starting");
+                continue;
+            }
+            handle({m.cmd, m.arg, std::string(m.str)});
+            if (starting) started_us = esp_timer_get_time();
             continue;
         }
         if (busy) {
@@ -412,7 +473,12 @@ void task(void*) {
     }
 }
 
-void remote_cmd(swp::PlaybackCmd c) { command({static_cast<uint8_t>(c), 0, ""}); }
+void remote_cmd(swp::PlaybackCmd c) {
+    // A single press sends PLAY or PAUSE depending on what the headphones think is happening,
+    // which can disagree with us (e.g. paused from the watch): treat both as a toggle.
+    if (c == swp::PlaybackCmd::Resume || c == swp::PlaybackCmd::Pause) c = playing.load() ? swp::PlaybackCmd::Pause : swp::PlaybackCmd::Resume;
+    command({static_cast<uint8_t>(c), 0, ""});
+}
 
 }  // namespace
 
@@ -433,13 +499,20 @@ void init() {
     a2dp::init(pcm_source);
     a2dp::set_remote_handler(remote_cmd);
     // Highest application priority, on core 1 away from the Wi-Fi/BT controller tasks.
-    xTaskCreatePinnedToCore(task, "decoder", 12288, nullptr, 18, nullptr, 1);
+    xTaskCreatePinnedToCore(task, "decoder", 6144, nullptr, 18, nullptr, 1);  // ~2.3 KB used decoding MP3
 }
 
 void command(const swp::PlaybackCommand& c) {
     if (!q) return;
-    Msg m;
-    m.cmd = c;
+    if (c.str.size() >= sizeof(Msg::str)) {
+        ESP_LOGW(TAG, "playlist id too long");
+        return;
+    }
+    Msg m{};
+    m.cmd = c.cmd;
+    m.arg = c.arg;
+    m.queued_us = esp_timer_get_time();
+    memcpy(m.str, c.str.data(), c.str.size());
     if (xQueueSend(q, &m, 0) != pdTRUE) ESP_LOGW(TAG, "command queue full");
 }
 

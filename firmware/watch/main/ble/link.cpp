@@ -127,7 +127,7 @@ void handle_transfer_chunk(const swp::TransferChunk& c) {
 void handle_notification(const swp::Notification& n) {
     auto st = settings::get();
     bool fresh = false;
-    if (st.ntfy_enabled) {
+    if (st.ntfy_enabled && !settings::dnd()) {
         core::StoredNotification sn;
         sn.id = n.id;
         sn.timestamp = n.timestamp;
@@ -149,7 +149,7 @@ void handle_notification(const swp::Notification& n) {
             services::notify_feedback(n.priority >= 4 ? 3 : 1, false);
         }
     }
-    // Ack even duplicates and disabled-notification drops, so the companion and server stop
+    // Ack even duplicates and disabled / Do Not Disturb drops, so the companion and server stop
     // redelivering (at-least-once semantics end to end).
     swp::NotificationAck ack;
     ack.id = n.id;
@@ -269,7 +269,7 @@ void handle_companion(const swp::Frame& f) {
                     for (auto& t : m->tracks) s->tracks.push_back(std::move(t));
                 app::mark(app::kDirtyTracks);
                 // Page in the rest automatically (small pages keep frames under the BLE MTU budget).
-                if (s->tracks.size() < s->tracks_total && !m->tracks.empty())
+                if (s->tracks.size() < s->tracks_total && s->tracks.size() < kMaxListedTracks && !m->tracks.empty())
                     request_tracks(m->playlist_id, static_cast<uint16_t>(s->tracks.size()));
             }
             break;
@@ -308,6 +308,7 @@ void handle_companion(const swp::Frame& f) {
                 app::Locked s;
                 s->companion = *m;
                 s->companion_valid = true;
+                s->companion_rx_us = esp_timer_get_time();
                 app::mark(app::kDirtyCompanion);
             }
             break;

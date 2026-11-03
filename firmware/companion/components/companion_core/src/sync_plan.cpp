@@ -28,23 +28,24 @@ SyncPlan plan_sync(const std::vector<RemoteTrack>& playlist, const std::vector<L
     uint64_t budget = 0;
     for (auto& t : playlist) {
         if (!safe_id(t.id) || !supported_suffix(t.suffix) || wanted.count(t.id)) continue;
-        if (budget + t.size > quota) {
+        uint64_t need = t.size ? t.size : t.budget;
+        if (budget + need > quota) {
             p.over_quota.push_back(t.id);
             continue;
         }
-        budget += t.size;
+        budget += need;
         wanted.insert(t.id);
         auto it = have.find(t.id);
         bool complete = it != have.end() && !it->second->partial && it->second->suffix == t.suffix &&
                         (t.size == 0 || it->second->size == t.size);
         if (complete) {
             p.keep.push_back(t.id);
-        } else if (it != have.end() && it->second->partial && it->second->size < t.size) {
+        } else if (t.size > 0 && it != have.end() && it->second->partial && it->second->size < t.size) {
             p.resume.push_back(t.id);
             p.bytes_needed += t.size - it->second->size;
         } else {
-            p.download.push_back(t.id);
-            p.bytes_needed += t.size;
+            p.download.push_back(t.id);  // unknown size: a partial can't be resumed, start over
+            p.bytes_needed += need;
         }
     }
     for (auto& f : local)

@@ -1,5 +1,6 @@
 // HTTPS client helpers. TLS certificates are always verified against the bundled Mozilla CA
-// set (esp_crt_bundle); plain http:// URLs are refused.
+// set (esp_crt_bundle); plain http:// URLs are refused, except private-LAN addresses where a
+// caller opts in (`allow_lan_http`, Navidrome on the home network).
 #pragma once
 
 #include <atomic>
@@ -22,7 +23,7 @@ struct Result {
 };
 
 // GET into memory, rejecting bodies larger than max_len.
-Result get(const std::string& url, const Headers& headers, std::vector<uint8_t>& body, size_t max_len);
+Result get(const std::string& url, const Headers& headers, std::vector<uint8_t>& body, size_t max_len, bool allow_lan_http = false);
 // Any method, optional body (sent as-is; the caller supplies Content-Type in `headers`).
 Result request(esp_http_client_method_t method, const std::string& url, const Headers& headers, const std::vector<uint8_t>& req_body,
                std::vector<uint8_t>& body, size_t max_len);
@@ -46,6 +47,6 @@ private:
 // partial download (the server must answer 206; a 200 restarts from zero).
 // `should_abort` is polled between chunks (e.g. playback started, Wi-Fi lost).
 Result download(const std::string& url, const Headers& headers, const std::string& path, uint64_t resume_from,
-                uint64_t expected_size, const std::function<bool()>& should_abort, uint64_t* bytes_written);
+                uint64_t expected_size, const std::function<bool()>& should_abort, uint64_t* bytes_written, bool allow_lan_http = false);
 
 }  // namespace http

@@ -78,6 +78,27 @@ void set(const swp::WatchSettings& s) {
     apply_tz(s.posix_tz);
 }
 
+bool dnd() {
+    auto b = blob("dnd");
+    return b.size() == 1 && b[0];
+}
+
+void set_dnd(bool on) { set_blob("dnd", {static_cast<uint8_t>(on ? 1 : 0)}); }
+
+std::string lock_pin() {
+    auto b = blob("lock_pin");
+    return std::string(b.begin(), b.end());
+}
+
+void set_lock_pin(const std::string& pin) { set_blob("lock_pin", std::vector<uint8_t>(pin.begin(), pin.end())); }
+
+bool locked() {
+    auto b = blob("locked");
+    return b.size() == 1 && b[0] && !lock_pin().empty();
+}
+
+void set_locked(bool on) { set_blob("locked", {static_cast<uint8_t>(on ? 1 : 0)}); }
+
 Peer peer() {
     Peer p;
     auto b = blob("peer");

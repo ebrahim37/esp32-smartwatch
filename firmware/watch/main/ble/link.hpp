@@ -30,6 +30,8 @@ void on_companion_bytes(const uint8_t* data, size_t len);
 
 // Convenience requests used by the UI.
 void request_playlists();
+// Track lists page in automatically up to this many rows (All Songs can hold the whole library).
+constexpr size_t kMaxListedTracks = 200;
 void request_tracks(const std::string& playlist_id, uint16_t offset);
 void playback(swp::PlaybackCmd cmd, uint32_t arg = 0, const std::string& str = "");
 void send_alert_tone();
