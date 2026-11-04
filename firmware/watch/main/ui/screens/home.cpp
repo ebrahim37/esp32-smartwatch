@@ -72,6 +72,16 @@ public:
         };
         status(kLinkSym, kSplit + 20, "LINK", 54, link_icon_, link_txt_);
         status(LV_SYMBOL_WIFI, kSplit + 18, "NET", 98, net_icon_, net_txt_);  // wider glyph: optically aligned
+        // LINK / NET opens Settings -> Connections.
+        lv_obj_t* conn = lv_obj_create(face_);
+        lv_obj_remove_style_all(conn);
+        lv_obj_set_size(conn, kContentR - kSplit + 12, 120);
+        lv_obj_set_pos(conn, kSplit + 4, 26);
+        lv_obj_add_flag(conn, LV_OBJ_FLAG_CLICKABLE);
+        on_click(conn, [] {
+            push(make_settings());
+            push(make_connections());
+        });
         divs_.push_back(vdiv(40, 102));
         divs_.push_back(hdiv(150));
 

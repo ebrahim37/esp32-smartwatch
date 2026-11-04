@@ -42,6 +42,7 @@ enum Dirty : uint32_t {
     kDirtyAlarms = 1u << 21,
     kDirtyWebConfig = 1u << 22,
     kDirtyMapData = 1u << 23,
+    kDirtyMemos = 1u << 24,
 };
 
 enum class LinkState : uint8_t {
@@ -125,6 +126,12 @@ struct State {
     swp::Route route;
     bool map_data_valid = false;
     swp::MapDataStatus map_data;
+
+    // Voice memos (recorded and stored on the companion).
+    swp::MemoStatus memo;
+    int64_t memo_rx_us = 0;  // when `memo` arrived (elapsed time interpolation)
+    bool memos_loaded = false;
+    std::vector<swp::MemoInfo> memos;  // newest first
 
     std::vector<Alert> alerts;
 

@@ -296,6 +296,22 @@ void handle_companion(const swp::Frame& f) {
                 app::mark(app::kDirtyAudio);
             }
             break;
+        case MsgType::MemoStatus:
+            if (auto m = swp::decode_message<swp::MemoStatus>(f)) {
+                app::Locked s;
+                s->memo = std::move(*m);
+                s->memo_rx_us = esp_timer_get_time();
+                app::mark(app::kDirtyMemos);
+            }
+            break;
+        case MsgType::MemoList:
+            if (auto m = swp::decode_message<swp::MemoList>(f)) {
+                app::Locked s;
+                s->memos = std::move(m->memos);
+                s->memos_loaded = true;
+                app::mark(app::kDirtyMemos);
+            }
+            break;
         case MsgType::AudioStatus:
             if (auto m = swp::decode_message<swp::AudioStatus>(f)) {
                 app::Locked s;
@@ -441,6 +457,13 @@ void playback(swp::PlaybackCmd cmd, uint32_t arg, const std::string& str) {
     c.cmd = static_cast<uint8_t>(cmd);
     c.arg = arg;
     c.str = str;
+    send(c);
+}
+
+void memo(swp::MemoOp op, const std::string& name) {
+    swp::MemoCommand c;
+    c.op = static_cast<uint8_t>(op);
+    c.name = name;
     send(c);
 }
 

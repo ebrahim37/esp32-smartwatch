@@ -6,6 +6,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -55,6 +56,10 @@ bool tile_write(uint8_t z, uint32_t x, uint32_t y, const std::vector<uint8_t>& d
 bool write_file_atomic(const std::string& path, const uint8_t* data, size_t len, bool sync = true);
 bool read_file(const std::string& path, std::vector<uint8_t>& out, size_t max_len);
 uint64_t file_size(const std::string& path);  // 0 if missing
+// Lists a directory under kMount with sizes in one pass. Use this instead of readdir + stat for
+// big directories: on FAT every stat() rescans the whole directory (minutes for ~1000 files).
+// Skips "." and "..".
+void list_dir(const std::string& path, const std::function<void(const char* name, uint64_t size, bool is_dir)>& fn);
 void flush_index();  // persist the LRU index if dirty (called periodically)
 
 }  // namespace storage

@@ -74,6 +74,32 @@ through it in order and note the results in `agent/firmware/progress.md`.
 - [ ] Open Maps while music plays: tiles still load (slower), audio does not stutter.
 - [ ] Timer completion with AirPods connected plays beeps and vibrates.
 
+- [ ] Navidrome unreachable (server off): after a companion restart the Music app still lists playlists and downloaded songs within a few seconds; log shows `library: loaded … in <N> ms`.
+
+## 5b. Voice memos (unverified on AirPods — TODO(HARDWARE))
+
+- [ ] Memos app with AirPods connected: tap record. Status goes "Connecting to headphones…" → "Recording 0:01…"; companion log shows `audio state 2`/`3` and `recording … at 16000 Hz` (or 8000).
+- [ ] Music that was playing pauses when recording starts.
+- [ ] Tap stop: log `saved /sdcard/memos/….wav`, the memo appears at the top of the list with the right length.
+- [ ] Tap a memo: it plays on the AirPods through Now Playing, and the voice is intelligible.
+- [ ] Hold a memo → Delete: it disappears from the list and the SD card.
+- [ ] AirPods out of the case / not connected: error "Headphones not available" after ~12 s, or "No headphones paired".
+- [ ] After a memo, music playback still works (A2DP not left blocked by the hands-free link).
+- [ ] Stop with the AirPods button, then play the memo twice: both plays are heard.
+- [ ] Several memos of different lengths: each one ends on time and Now Playing stops (no silent overrun, no rolling into the next memo).
+- [ ] Headphones disconnect mid-song (put them in the case): the player shows Paused, and later commands still work (no `command queue full`).
+
+## 5d. Home screen
+
+- [ ] Tap LINK / NET: opens Settings → Connections; Back returns to Settings.
+
+## 5c. Compass
+
+- [ ] Apps order: … Alarm, Lock, Compass, Alerts, Calendar, Activity, Memos, Calculator, Settings.
+- [ ] Turning the watch turns the dial smoothly; the heading and direction (N, NE, …) in the middle match the top marker.
+- [ ] Long press the dial: it vibrates and the current direction reads 0° N (relative gyro heading, shared with Maps).
+- [ ] Coordinates show at the bottom with a location fix, "No location" without.
+
 ## 6. Web configuration
 - [ ] Watch Settings → Web configuration → Open for 5 minutes → the watch shows `http://<companion-ip>/` and a countdown.
 - [ ] The page loads from a phone/PC on the same Wi-Fi; secrets show only as saved/not set; a non-https URL is rejected.

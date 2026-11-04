@@ -1,11 +1,14 @@
 // Weather, Timer, Stopwatch, Calculator, Calendar, Activity and Voice Memos.
+#include <algorithm>
 #include <cmath>
+#include <ctime>
 
 #include "app/services.hpp"
 #include "app/state.hpp"
 #include "ble/link.hpp"
 #include "core/calculator.hpp"
 #include "core/format.hpp"
+#include "esp_timer.h"
 #include "ui/ui.hpp"
 
 namespace ui {
@@ -430,27 +433,136 @@ private:
     lv_obj_t* steps_ = nullptr;
 };
 
-// ---- Voice memos (deferred) ------------------------------------------------------------
+// ---- Voice memos ------------------------------------------------------------------------
+// Recording runs on the companion through the headphones' microphone (Bluetooth hands-free);
+// memos live on its SD card and play back through the music player (playlist "memos").
 
 class MemosScreen : public Screen {
 public:
     const char* title() const override { return "Voice Memos"; }
-    bool scrollable() const override { return false; }
+    uint32_t tick_ms() const override { return 250; }
     void build(lv_obj_t* c) override {
-        // TODO(PROTOTYPE): voice memos are deferred. The production watch has no microphone;
-        // recording will use the AirPods microphone over Bluetooth HFP on the companion, with
-        // files stored under /sdcard/memos. See docs/voice-memos.md.
-        lv_obj_t* ic = round_button(c, LV_SYMBOL_EDIT, color::card2(), 96, nullptr);
-        lv_obj_align(ic, LV_ALIGN_TOP_MID, 0, 50);
-        lv_obj_add_state(ic, LV_STATE_DISABLED);
-        lv_obj_t* t = label(c, "Not available yet", &font_inter_24);
-        lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 170);
-        lv_obj_t* d = label(c, "Voice memos will record through your AirPods microphone via the companion.", &font_inter_16, color::muted());
-        lv_obj_set_width(d, 340);
-        lv_label_set_long_mode(d, LV_LABEL_LONG_WRAP);
-        lv_obj_set_style_text_align(d, LV_TEXT_ALIGN_CENTER, 0);
-        lv_obj_align(d, LV_ALIGN_TOP_MID, 0, 214);
+        lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_flex_align(c, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_style_pad_all(c, 12, 0);
+        lv_obj_set_style_pad_row(c, 10, 0);
+        btn_ = round_button(c, UI_SYMBOL_MIC, color::red(), 96, [this] { toggle(); });
+        btn_icon_ = lv_obj_get_child(btn_, 0);
+        status_ = label(c, "", &font_inter_20, color::muted());
+        lv_obj_set_width(status_, 330);
+        lv_label_set_long_mode(status_, LV_LABEL_LONG_WRAP);
+        lv_obj_set_style_text_align(status_, LV_TEXT_ALIGN_CENTER, 0);
+        list_ = lv_obj_create(c);
+        lv_obj_remove_style_all(list_);
+        lv_obj_set_size(list_, LV_PCT(100), LV_SIZE_CONTENT);
+        lv_obj_set_flex_flow(list_, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_style_pad_row(list_, 8, 0);
+        lv_obj_remove_flag(list_, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(list_, LV_OBJ_FLAG_EVENT_BUBBLE);
+        swlink::memo(swp::MemoOp::List);
+        refresh(0xFFFFFFFFu);
     }
+    void refresh(uint32_t d) override {
+        if (d & (app::kDirtyMemos | app::kDirtyLink | app::kDirtyPlayback)) show();
+    }
+    void tick() override { show_status(); }
+
+private:
+    void toggle() {
+        auto st = state();
+        swlink::memo(st == swp::MemoState::Connecting || st == swp::MemoState::Recording ? swp::MemoOp::Stop : swp::MemoOp::Start);
+    }
+    swp::MemoState state() {
+        app::Locked s;
+        return static_cast<swp::MemoState>(s->memo.state);
+    }
+
+    void show_status() {
+        bool ready = swlink::ready();
+        swp::MemoStatus m;
+        int64_t rx;
+        {
+            app::Locked s;
+            m = s->memo;
+            rx = s->memo_rx_us;
+        }
+        auto st = static_cast<swp::MemoState>(m.state);
+        bool busy = ready && (st == swp::MemoState::Connecting || st == swp::MemoState::Recording);
+        set_text(btn_icon_, busy ? LV_SYMBOL_STOP : UI_SYMBOL_MIC);
+        if (ready) lv_obj_remove_state(btn_, LV_STATE_DISABLED);
+        else lv_obj_add_state(btn_, LV_STATE_DISABLED);
+        lv_color_t col = color::muted();
+        std::string txt;
+        if (!ready) {
+            txt = "Companion not connected";
+        } else if (st == swp::MemoState::Connecting) {
+            txt = "Connecting to headphones\xE2\x80\xA6";  // U+2026 ellipsis
+        } else if (st == swp::MemoState::Recording) {
+            int64_t ms = m.elapsed_ms + (esp_timer_get_time() - rx) / 1000;
+            txt = "Recording  " + core::fmt_duration(ms / 1000);
+            col = color::red();
+        } else if (st == swp::MemoState::Error) {
+            txt = m.error.empty() ? "Recording failed" : m.error;
+            col = color::orange();
+        } else {
+            txt = "Tap to record with your headphones";
+        }
+        set_text(status_, txt);
+        lv_obj_set_style_text_color(status_, col, 0);
+    }
+
+    void show() {
+        show_status();
+        std::vector<swp::MemoInfo> memos;
+        bool loaded;
+        std::string cur;
+        {
+            app::Locked s;
+            memos = s->memos;
+            loaded = s->memos_loaded;
+            if (s->playback.playlist_id == "memos") cur = s->playback.track_id;
+        }
+        std::string key = std::to_string(loaded) + cur;
+        for (auto& m : memos) key += m.name + "/";
+        if (key == shown_) return;
+        shown_ = key;
+        clear(list_);
+        if (!loaded) return;
+        if (memos.empty()) {
+            section_header(list_, "No memos yet.");
+            return;
+        }
+        for (size_t i = 0; i < memos.size(); ++i) {
+            const auto& m = memos[i];
+            char when[32];
+            time_t t = m.created;
+            struct tm lt;
+            localtime_r(&t, &lt);
+            strftime(when, sizeof when, "%b %e, %l:%M %p", &lt);
+            std::string title = when;
+            for (size_t p; (p = title.find("  ")) != std::string::npos;) title.erase(p, 1);  // %e / %l pad with spaces
+            std::string dur = core::fmt_duration(std::max<uint32_t>(1, m.duration_ms / 1000));
+            uint16_t idx = static_cast<uint16_t>(i);
+            std::string name = m.name;
+            lv_obj_t* r = list_row(list_, title.c_str(), nullptr, dur.c_str(), nullptr, color::card2(), LV_SYMBOL_PLAY);
+            lv_obj_add_flag(r, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_set_style_bg_color(r, color::card2(), LV_STATE_PRESSED);
+            on(r, LV_EVENT_SHORT_CLICKED, [idx] {
+                swlink::playback(swp::PlaybackCmd::SetShuffle, 0);
+                swlink::playback(swp::PlaybackCmd::SetRepeat, static_cast<uint32_t>(swp::RepeatMode::Off));
+                swlink::playback(swp::PlaybackCmd::PlayPlaylist, idx, "memos");
+                push(make_now_playing());
+            });
+            on(r, LV_EVENT_LONG_PRESSED, [name, title] {
+                confirm("Delete memo?", title.c_str(), "Delete", color::red(), [name] { swlink::memo(swp::MemoOp::Delete, name); });
+            });
+            if (m.name == cur) lv_obj_set_style_text_color(r, color::pink(), 0);
+        }
+        section_header(list_, "Hold a memo to delete it.");
+    }
+
+    lv_obj_t *btn_ = nullptr, *btn_icon_ = nullptr, *status_ = nullptr, *list_ = nullptr;
+    std::string shown_ = "-";
 };
 
 }  // namespace

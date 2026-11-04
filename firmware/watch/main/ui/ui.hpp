@@ -44,6 +44,8 @@ inline lv_color_t pink() { return lv_color_hex(0xFF375F); }
 #define UI_SYMBOL_SEARCH "\xEF\x80\x82"  // FontAwesome magnifying glass (U+F002)
 #define UI_SYMBOL_STAR "\xEF\x80\x85"    // FontAwesome star (U+F005)
 #define UI_SYMBOL_LOCK "\xEF\x80\xA3"    // FontAwesome lock (U+F023)
+#define UI_SYMBOL_MIC "\xEF\x84\xB0"     // FontAwesome microphone (U+F130)
+#define UI_SYMBOL_COMPASS "\xEF\x85\x8E" // FontAwesome compass (U+F14E)
 
 // Safe area for the panel's rounded corners. kCornerR is the visible corner radius of the
 // 410x502 AMOLED, measured on the prototype with the Display geometry test patterns: all four
@@ -149,13 +151,18 @@ Screen* make_alarms();
 Screen* make_calendar();
 Screen* make_notifications();
 Screen* make_settings();
+Screen* make_connections();  // Settings -> Connections
 Screen* make_voice_memos();
 Screen* make_activity();
+Screen* make_compass();
 Screen* make_geometry_test();
 Screen* make_lock();  // Lock app: locks now (or explains how to set a passcode); returns nullptr
 Screen* make_passcode_settings();
 // Full-screen passcode overlay above everything; stays until the right passcode is entered.
 void show_lock_overlay();
+
+// Full-screen confirmation: `fn` runs when `action` is tapped.
+void confirm(const char* title, const char* body, const char* action, lv_color_t colour, Fn fn);
 
 // Mini player bar shown at the bottom of music screens while something is playing.
 // ---- Weather (ui/weather.cpp) ----------------------------------------------------------------

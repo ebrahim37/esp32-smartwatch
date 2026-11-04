@@ -69,6 +69,9 @@ enum class MsgType : uint8_t {
     PlaylistTracks = 0x53,
     PlaybackCommand = 0x54,
     PlaybackStatus = 0x55,
+    MemoCommand = 0x58,
+    MemoStatus = 0x59,
+    MemoList = 0x5A,
 
     WifiConfigSet = 0x60,
     WifiStatusRequest = 0x61,
@@ -528,6 +531,45 @@ struct PlaybackStatus {
         a.str8(album); a.u32(position_ms); a.u32(duration_ms); a.u8(shuffle); a.u8(repeat); a.u8(volume);
         a.u8(sink_connected); a.str8(error); a.list(up_next, 4);
     }
+};
+
+// ---- Voice memos ------------------------------------------------------------------------
+// Recorded by the companion from the headphones' microphone (HFP), stored as WAV on its SD card
+// and played back like music (PlaybackCmd::PlayPlaylist with playlist "memos", arg = index in
+// MemoList order).
+enum class MemoOp : uint8_t { Start = 1, Stop = 2, List = 3, Delete = 4 };
+enum class MemoState : uint8_t { Idle = 0, Connecting = 1, Recording = 2, Error = 3 };
+
+struct MemoCommand {
+    SWP_MSG(MemoCommand);
+    uint8_t op = 0;    // MemoOp
+    std::string name;  // Delete: memo name
+    template <class A>
+    void fields(A& a) { a.u8(op); a.str8(name); }
+};
+
+struct MemoStatus {
+    SWP_MSG(MemoStatus);
+    uint8_t state = 0;  // MemoState
+    uint32_t elapsed_ms = 0;
+    std::string error;
+    template <class A>
+    void fields(A& a) { a.u8(state); a.u32(elapsed_ms); a.str8(error); }
+};
+
+struct MemoInfo {
+    std::string name;      // file name without extension, e.g. 20261103-105412
+    uint32_t created = 0;  // UTC seconds
+    uint32_t duration_ms = 0;
+    template <class A>
+    void fields(A& a) { a.str8(name); a.u32(created); a.u32(duration_ms); }
+};
+
+struct MemoList {
+    SWP_MSG(MemoList);
+    std::vector<MemoInfo> memos;  // newest first
+    template <class A>
+    void fields(A& a) { a.list(memos, 40); }
 };
 
 struct WifiConfigSet {

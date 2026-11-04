@@ -9,6 +9,7 @@
 #include <cstring>
 #include <unordered_map>
 
+#include "ble_server.hpp"
 #include "cJSON.h"
 #include "ccore/quota.hpp"
 #include "ccore/subsonic.hpp"
@@ -107,25 +108,22 @@ uint64_t budget_for(const library::Track& t) { return (t.duration_s + 5) * kKbps
 std::vector<ccore::LocalFile> scan_local() {
     std::vector<ccore::LocalFile> out;
     auto scan = [&](const char* dir, bool partial) {
-        DIR* d = opendir(dir);
-        if (!d) return;
-        while (struct dirent* e = readdir(d)) {
-            std::string n = e->d_name;
-            if (n.empty() || n[0] == '.' || n == "library.json") continue;
+        storage::list_dir(dir, [&](const char* name, uint64_t size, bool is_dir) {
+            std::string n = name;
+            if (is_dir || n.empty() || n[0] == '.' || n == "library.json") return;
             size_t dot = n.find('.');
-            if (dot == std::string::npos) continue;
+            if (dot == std::string::npos) return;
             ccore::LocalFile f;
             f.id = n.substr(0, dot);
             f.suffix = n.substr(dot + 1);
             if (partial) {
-                if (f.suffix.size() < 5 || f.suffix.compare(f.suffix.size() - 5, 5, ".part") != 0) continue;
+                if (f.suffix.size() < 5 || f.suffix.compare(f.suffix.size() - 5, 5, ".part") != 0) return;
                 f.suffix.resize(f.suffix.size() - 5);
             }
             f.partial = partial;
-            f.size = storage::file_size(std::string(dir) + "/" + n);
+            f.size = size;
             if (ccore::safe_id(f.id)) out.push_back(f);
-        }
-        closedir(d);
+        });
     };
     scan(storage::kMusicDir, false);
     scan(storage::kMusicTmpDir, true);
@@ -239,8 +237,7 @@ bool sync_once() {
             if (f.id == id) {
                 std::string p = f.partial ? std::string(storage::kMusicTmpDir) + "/" + id + "." + f.suffix + ".part"
                                           : library::path_for(id, f.suffix);
-                uint64_t sz = storage::file_size(p);
-                if (unlink(p.c_str()) == 0 && !f.partial) storage::music_add(-static_cast<int64_t>(sz));
+                if (unlink(p.c_str()) == 0 && !f.partial) storage::music_add(-static_cast<int64_t>(f.size));
             }
     library::replace(std::move(table), std::move(lists));
     library::save();
@@ -306,6 +303,12 @@ void task(void*) {
     // The storage task mounts the card asynchronously (and may wait for a card insert).
     while (!storage::mounted()) vTaskDelay(pdMS_TO_TICKS(2000));
     library::load();
+    {
+        // The watch may have asked for playlists before the library was loaded.
+        swp::Playlists p;
+        p.playlists = library::playlists();
+        ble_server::to_watch(p);
+    }
     for (;;) {
         // Wi-Fi only: TODO(LTE) never sync music over cellular data.
         if (net::online() && net::provider() == swp::NetProvider::Wifi && !player::active()) {

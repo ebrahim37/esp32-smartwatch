@@ -34,6 +34,7 @@ void request_playlists();
 constexpr size_t kMaxListedTracks = 200;
 void request_tracks(const std::string& playlist_id, uint16_t offset);
 void playback(swp::PlaybackCmd cmd, uint32_t arg = 0, const std::string& str = "");
+void memo(swp::MemoOp op, const std::string& name = "");
 void send_alert_tone();
 void request_status();
 

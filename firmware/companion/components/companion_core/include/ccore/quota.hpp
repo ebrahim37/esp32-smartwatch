@@ -11,7 +11,7 @@ constexpr uint64_t kMiB = 1024ull * 1024;
 constexpr uint64_t kGiB = 1024ull * kMiB;
 constexpr uint64_t kMusicQuota = 3 * kGiB;  // TODO(PROTOTYPE): fixed cap; the whole library is synced up to it
 constexpr uint64_t kMapsQuota = 4 * kGiB;
-constexpr uint64_t kMemosQuota = 256 * kMiB;  // TODO(PROTOTYPE): voice memos are deferred
+constexpr uint64_t kMemosQuota = 256 * kMiB;  // ~2.3 h of 16 kHz memos
 constexpr uint64_t kMinFreeReserve = 256 * kMiB;  // never fill the card completely
 
 struct Quota {

@@ -459,6 +459,8 @@ private:
 
 // ---- Maps (OSM data on the VPS helper; the companion caches tiles on its SD card) --------
 
+}  // namespace
+
 void confirm(const char* title, const char* body, const char* action, lv_color_t colour, Fn fn) {
     lv_obj_t* m = lv_obj_create(lv_layer_top());
     lv_obj_set_size(m, LV_PCT(100), LV_PCT(100));
@@ -466,6 +468,7 @@ void confirm(const char* title, const char* body, const char* action, lv_color_t
     lv_obj_set_style_bg_opa(m, LV_OPA_90, 0);
     lv_obj_set_style_border_width(m, 0, 0);
     lv_obj_set_style_radius(m, 0, 0);
+    lv_obj_set_style_pad_all(m, 0, 0);  // the buttons are placed from the screen edges
     lv_obj_remove_flag(m, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t* t = label(m, title, &font_inter_24);
     lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 110);
@@ -482,6 +485,8 @@ void confirm(const char* title, const char* body, const char* action, lv_color_t
     lv_obj_t* no = pill_button(m, "Cancel", color::card2(), [m] { lv_obj_delete_async(m); }, 150, 64);
     lv_obj_align(no, LV_ALIGN_BOTTOM_LEFT, 44, -70);
 }
+
+namespace {
 
 class MapsSettingsScreen : public ListScreen {
 public:
@@ -729,6 +734,7 @@ public:
 
 }  // namespace
 
+Screen* make_connections() { return new ConnectionsScreen(); }
 Screen* make_settings() { return new SettingsScreen(); }
 
 }  // namespace ui

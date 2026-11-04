@@ -19,6 +19,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "music/memos.hpp"
 #include "music/navidrome.hpp"
 #include "music/player.hpp"
 #include "net.hpp"
@@ -63,6 +64,7 @@ extern "C" void app_main(void) {
     dispatch::init();
     ble_server::init();
     music::player::init();  // also brings up A2DP/AVRCP
+    music::memos::init();   // HFP Audio Gateway (headphone microphone)
     music::navidrome::start();
     cloud::start();
     ntfy::start();

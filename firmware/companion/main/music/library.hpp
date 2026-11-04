@@ -27,6 +27,7 @@ struct Track {
     uint32_t duration_s = 0;
     uint64_t size = 0;
     bool available = false;  // complete file present on the card
+    std::string path;        // file location when not in the music directory (voice memos)
 };
 
 struct Playlist {

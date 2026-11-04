@@ -12,6 +12,7 @@
 #include "esp_timer.h"
 #include "music/a2dp.hpp"
 #include "music/library.hpp"
+#include "music/memos.hpp"
 #include "music/navidrome.hpp"
 #include "music/player.hpp"
 #include "net.hpp"
@@ -216,6 +217,9 @@ void on_frame(uint16_t conn, const swp::Frame& f) {
             break;
         case MsgType::PlaybackCommand:
             if (auto m = swp::decode_message<swp::PlaybackCommand>(f)) music::player::command(*m);
+            break;
+        case MsgType::MemoCommand:
+            if (auto m = swp::decode_message<swp::MemoCommand>(f)) music::memos::command(*m);
             break;
         case MsgType::WifiConfigSet:
             if (auto m = swp::decode_message<swp::WifiConfigSet>(f)) {

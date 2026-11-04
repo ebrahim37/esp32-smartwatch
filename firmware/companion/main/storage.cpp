@@ -185,23 +185,39 @@ void ensure_dir(const char* p) {
     if (stat(p, &st) != 0) mkdir(p, 0775);
 }
 
+}  // namespace
+
+void list_dir(const std::string& path, const std::function<void(const char*, uint64_t, bool)>& fn) {
+    size_t m = strlen(kMount);
+    if (pdrv == 0xFF || path.compare(0, m, kMount) != 0) return;
+    std::string fp = std::string(1, static_cast<char>('0' + pdrv)) + ":" + path.substr(m);
+    if (fp.size() == 2) fp += "/";
+    auto* dir = static_cast<FF_DIR*>(heap_caps_malloc(sizeof(FF_DIR), MALLOC_CAP_SPIRAM));
+    auto* fi = static_cast<FILINFO*>(heap_caps_malloc(sizeof(FILINFO), MALLOC_CAP_SPIRAM));  // ~280 B with LFN: off the stack
+    if (dir && fi && f_opendir(dir, fp.c_str()) == FR_OK) {
+        while (f_readdir(dir, fi) == FR_OK && fi->fname[0]) {
+            if (fi->fname[0] == '.' && (fi->fname[1] == 0 || (fi->fname[1] == '.' && fi->fname[2] == 0))) continue;
+            fn(fi->fname, fi->fsize, (fi->fattrib & AM_DIR) != 0);
+        }
+        f_closedir(dir);
+    }
+    heap_caps_free(dir);
+    heap_caps_free(fi);
+}
+
+namespace {
+
 uint64_t dir_size(const std::string& path, int depth = 0) {
     uint64_t total = 0;
-    DIR* d = opendir(path.c_str());
-    if (!d) return 0;
-    while (struct dirent* e = readdir(d)) {
-        if (e->d_name[0] == '.' && (e->d_name[1] == 0 || e->d_name[1] == '.')) continue;
-        std::string p = path + "/" + e->d_name;
-        struct stat st;
-        if (stat(p.c_str(), &st) != 0) continue;
-        if (S_ISDIR(st.st_mode)) {
-            if (depth < 4) total += dir_size(p, depth + 1);
-        } else {
-            total += st.st_size;
-        }
-        if ((total & 0xFFFFF) == 0) vTaskDelay(1);  // yield on large scans
-    }
-    closedir(d);
+    std::vector<std::string> subdirs;
+    unsigned n = 0;
+    list_dir(path, [&](const char* name, uint64_t size, bool is_dir) {
+        if (is_dir) subdirs.push_back(path + "/" + name);
+        else total += size;
+        if (++n % 256 == 0) vTaskDelay(1);  // yield on large scans
+    });
+    if (depth < 4)
+        for (auto& d : subdirs) total += dir_size(d, depth + 1);
     return total;
 }
 

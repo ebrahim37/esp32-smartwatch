@@ -5,9 +5,11 @@
 #include <cstring>
 #include <strings.h>
 #include <mutex>
+#include <unordered_map>
 
 #include "cJSON.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "storage.hpp"
 
 namespace music::library {
@@ -81,8 +83,17 @@ uint64_t jnum(const cJSON* o, const char* k) {
 }  // namespace
 
 void load() {
+    int64_t t0 = esp_timer_get_time();
     std::vector<uint8_t> raw;
-    if (!storage::read_file(kPath, raw, 16 * 1024 * 1024)) return;
+    if (!storage::read_file(kPath, raw, 16 * 1024 * 1024)) {
+        ESP_LOGW(TAG, "no %s yet; the next sync builds it", kPath);
+        return;
+    }
+    // Downloaded files and their sizes, from one directory listing (storage::list_dir).
+    std::unordered_map<std::string, uint64_t> present;
+    storage::list_dir(storage::kMusicDir, [&](const char* name, uint64_t size, bool is_dir) {
+        if (!is_dir) present.emplace(name, size);
+    });
     raw.push_back(0);
     cJSON* root = cJSON_Parse(reinterpret_cast<char*>(raw.data()));
     if (!root || !cJSON_IsArray(cJSON_GetObjectItemCaseSensitive(root, "tracks"))) {
@@ -101,7 +112,8 @@ void load() {
         tr.suffix = jstr(t, "suffix");
         tr.duration_s = static_cast<uint32_t>(jnum(t, "duration"));
         tr.size = jnum(t, "size");
-        tr.available = tr.size > 0 && storage::file_size(path_for(tr.id, tr.suffix)) == tr.size;
+        auto f = present.find(tr.id + "." + tr.suffix);
+        tr.available = tr.size > 0 && f != present.end() && f->second == tr.size;
         ts.push_back(std::move(tr));
     }
     std::vector<Playlist> ls;
@@ -122,7 +134,8 @@ void load() {
     tracks = std::move(ts);
     lists = std::move(ls);
     rebuild_all_songs();
-    ESP_LOGI(TAG, "loaded %u tracks (%u downloaded), %u playlist(s)", (unsigned)tracks.size(), (unsigned)all_songs.size(), (unsigned)lists.size());
+    ESP_LOGI(TAG, "loaded %u tracks (%u downloaded), %u playlist(s) in %lld ms", (unsigned)tracks.size(), (unsigned)all_songs.size(),
+             (unsigned)lists.size(), (esp_timer_get_time() - t0) / 1000);
 }
 
 bool save() {

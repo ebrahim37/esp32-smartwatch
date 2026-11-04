@@ -22,6 +22,7 @@
 #include "freertos/task.h"
 #include "music/a2dp.hpp"
 #include "music/library.hpp"
+#include "music/memos.hpp"
 #include "storage.hpp"
 
 namespace music::player {
@@ -122,12 +123,17 @@ bool eos = false;
 bool decoding = false;
 int64_t last_publish_us = 0;
 
+// Track `i` of the current playlist: the music library, or the voice memos.
+bool lookup(uint16_t i, library::Track& out) {
+    return playlist == memos::kPlaylistId ? memos::track_at(i, out) : library::track_at(playlist, i, out);
+}
+
 void publish() {
     swp::PlaybackStatus s;
     std::vector<swp::UpNextItem> up;
     for (uint16_t i : order.upcoming(4)) {
         library::Track t;
-        if (library::track_at(playlist, i, t)) up.push_back({t.title, t.artist});
+        if (lookup(i, t)) up.push_back({t.title, t.artist});
     }
     {
         std::lock_guard<std::mutex> g(mu);
@@ -157,6 +163,7 @@ esp_audio_simple_dec_type_t type_for(const std::string& suffix) {
     if (suffix == "flac") return ESP_AUDIO_SIMPLE_DEC_TYPE_FLAC;
     if (suffix == "aac") return ESP_AUDIO_SIMPLE_DEC_TYPE_AAC;
     if (suffix == "m4a" || suffix == "mp4") return ESP_AUDIO_SIMPLE_DEC_TYPE_M4A;  // AAC, ALAC or MP3 in MP4
+    if (suffix == "wav") return ESP_AUDIO_SIMPLE_DEC_TYPE_WAV;                      // voice memos
     return ESP_AUDIO_SIMPLE_DEC_TYPE_NONE;
 }
 
@@ -183,12 +190,12 @@ bool open_track(uint32_t start_ms) {
     close_track();
     ring_flush();
     int idx = order.current();
-    if (idx < 0 || !library::track_at(playlist, static_cast<uint16_t>(idx), cur)) return false;
+    if (idx < 0 || !lookup(static_cast<uint16_t>(idx), cur)) return false;
     if (!cur.available) {
         ESP_LOGW(TAG, "track %s not downloaded yet", cur.id.c_str());
         return false;
     }
-    std::string path = library::path_for(cur.id, cur.suffix);
+    std::string path = cur.path.empty() ? library::path_for(cur.id, cur.suffix) : cur.path;
     file = fopen(path.c_str(), "rb");
     if (!file) return false;
     // Large stdio buffer in PSRAM: fewer, bigger SD reads.
@@ -235,6 +242,7 @@ bool open_track(uint32_t start_ms) {
 
 // Advances to the next playable track. Returns false at the end of the queue.
 bool advance(bool user) {
+    if (!user && playlist == memos::kPlaylistId) return false;  // a memo plays on its own, then stops
     for (uint16_t tries = 0; tries <= order.size(); ++tries) {
         if (!order.next(user)) return false;
         if (open_track(0)) {
@@ -264,6 +272,10 @@ void push_pcm(const uint8_t* pcm, size_t bytes) {
             // Wait for space; the A2DP task drains ~44 frames/ms.
             while (ring_free() < 256) {
                 if (!playing.load()) return;
+                if (!a2dp::connected()) {  // headphones gone: nothing drains the ring (the task pauses)
+                    vTaskDelay(pdMS_TO_TICKS(50));
+                    return;
+                }
                 vTaskDelay(pdMS_TO_TICKS(10));
             }
             size_t h = r_head.load(std::memory_order_relaxed);
@@ -331,7 +343,9 @@ bool decode_step() {
     size_t used = in_len - raw.len;
     if (used > 0) memmove(inbuf, inbuf + used, raw.len);
     in_len = raw.len;
-    return !(eos && in_len == 0 && !produced);
+    // At end of file the decoder may leave a partial block it will never consume (seen with WAV):
+    // a step that neither consumes nor produces ends the track.
+    return !(eos && !produced && (in_len == 0 || used == 0));
 }
 
 void handle(const swp::PlaybackCommand& c) {
@@ -341,7 +355,7 @@ void handle(const swp::PlaybackCommand& c) {
     switch (static_cast<PlaybackCmd>(c.cmd)) {
         case PlaybackCmd::PlayPlaylist: {
             playlist = c.str.empty() ? library::kAllSongsId : c.str;
-            uint16_t n = library::size(playlist);
+            uint16_t n = playlist == memos::kPlaylistId ? memos::count() : library::size(playlist);
             if (n == 0) return set_state(swp::PlayState::Error, "playlist not synced");
             // arg UINT32_MAX: start from a random track (Shuffle buttons).
             uint16_t start = c.arg == UINT32_MAX ? static_cast<uint16_t>(esp_random() % n) : static_cast<uint16_t>(c.arg);
@@ -435,9 +449,17 @@ void handle(const swp::PlaybackCommand& c) {
     }
 }
 
+int64_t start_grace_us = 0;  // last PlayPlaylist/Resume: the link may still be coming up
+
 void task(void*) {
     Msg m;
     for (;;) {
+        if (playing.load() && !a2dp::connected() && esp_timer_get_time() - start_grace_us > 10000000) {
+            // The headphones disconnected mid-playback (taken by the phone, out of range).
+            ESP_LOGW(TAG, "headphones disconnected: pausing");
+            playing.store(false);
+            set_state(swp::PlayState::Paused);
+        }
         bool busy = decoding && playing.load();
         if (xQueueReceive(q, &m, busy ? 0 : pdMS_TO_TICKS(500)) == pdTRUE) {
             // Starting playback can wait seconds for the headphones to connect; a play/pause tap
@@ -449,7 +471,7 @@ void task(void*) {
                 continue;
             }
             handle({m.cmd, m.arg, std::string(m.str)});
-            if (starting) started_us = esp_timer_get_time();
+            if (starting) started_us = start_grace_us = esp_timer_get_time();
             continue;
         }
         if (busy) {
@@ -474,6 +496,7 @@ void task(void*) {
 }
 
 void remote_cmd(swp::PlaybackCmd c) {
+    if (memos::take_button()) return;  // stops a memo recording instead
     // A single press sends PLAY or PAUSE depending on what the headphones think is happening,
     // which can disagree with us (e.g. paused from the watch): treat both as a toggle.
     if (c == swp::PlaybackCmd::Resume || c == swp::PlaybackCmd::Pause) c = playing.load() ? swp::PlaybackCmd::Pause : swp::PlaybackCmd::Resume;
