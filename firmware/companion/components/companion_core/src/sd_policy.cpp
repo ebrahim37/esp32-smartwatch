@@ -44,7 +44,6 @@ VolumeKind classify_vbr(const uint8_t* s) {
     if (!bpb_ok) return VolumeKind::Unknown;
     uint16_t fat16_size = le16(s + 22);
     uint32_t fat32_size = le32(s + 36);
-    if (fat16_size == 0 && fat32_size != 0 && std::memcmp(s + 82, "FAT32   ", 8) == 0) return VolumeKind::Fat32;
     if (fat16_size == 0 && fat32_size != 0) return VolumeKind::Fat32;  // label is informational only
     if (fat16_size != 0) return VolumeKind::FatOther;
     return VolumeKind::Unknown;

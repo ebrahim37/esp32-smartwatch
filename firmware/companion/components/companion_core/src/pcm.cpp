@@ -23,7 +23,7 @@ void PcmConverter::reset() {
 int32_t PcmConverter::sample(const uint8_t* f, int ch) const {
     const uint8_t* p = f + static_cast<size_t>(ch) * (bits_ / 8);
     switch (bits_) {
-        case 8: return (static_cast<int32_t>(p[0]) - 128) << 8;  // unsigned 8-bit PCM
+        case 8: return (static_cast<int32_t>(p[0]) - 128) * 256;  // unsigned 8-bit PCM
         case 16: return static_cast<int16_t>(p[0] | (p[1] << 8));
         case 24: return static_cast<int32_t>((p[0] << 8) | (p[1] << 16) | (static_cast<uint32_t>(p[2]) << 24)) >> 16;
         default: return static_cast<int32_t>(p[0] | (p[1] << 8) | (p[2] << 16) | (static_cast<uint32_t>(p[3]) << 24)) >> 16;

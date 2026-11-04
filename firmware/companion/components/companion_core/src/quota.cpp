@@ -1,6 +1,7 @@
 #include "ccore/quota.hpp"
 
 #include <algorithm>
+#include <utility>
 
 namespace ccore {
 
@@ -45,7 +46,7 @@ bool LruIndex::remove(const std::string& key) {
     for (size_t i = 0; i < entries_.size(); ++i)
         if (entries_[i].key == key) {
             used_ -= entries_[i].size;
-            entries_[i] = entries_.back();
+            if (i + 1 != entries_.size()) entries_[i] = std::move(entries_.back());
             entries_.pop_back();
             return true;
         }
@@ -57,17 +58,10 @@ bool LruIndex::contains(const std::string& key) const {
 }
 
 std::vector<std::string> LruIndex::plan_eviction(uint64_t incoming, int low_watermark_pct) const {
-    std::vector<std::string> out;
-    if (used_ + incoming <= limit_) return out;
+    if (used_ + incoming <= limit_) return {};
     uint64_t target = limit_ / 100 * static_cast<uint64_t>(low_watermark_pct);
     if (incoming > target) target = 0; else target -= incoming;
-    uint64_t used = used_;
-    for (auto* e : oldest_first()) {
-        if (used <= target) break;
-        out.push_back(e->key);
-        used -= e->size;
-    }
-    return out;
+    return plan_free_bytes(used_ > target ? used_ - target : 0);
 }
 
 std::vector<const CacheEntry*> LruIndex::oldest_first() const {

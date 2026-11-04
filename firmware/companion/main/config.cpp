@@ -1,6 +1,7 @@
 #include "config.hpp"
 
 #include <mutex>
+#include <string_view>
 
 #include "ccore/ntfy.hpp"
 #include "ccore/subsonic.hpp"
@@ -37,11 +38,12 @@ bool valid_value(const KeyInfo& k, const std::string& v) {
     if (v.size() > k.max_len) return false;
     for (unsigned char c : v)
         if (c < 0x20 && c != '\t') return false;  // no control characters
-    bool lan_ok = std::string(k.key) == kNdUrl && ccore::lan_http_url(v);  // Navidrome on the home LAN
-    if ((std::string(k.key) == kServerUrl || std::string(k.key) == kNdUrl || std::string(k.key) == kNtfyUrl) && !v.empty() &&
+    std::string_view key = k.key;
+    bool lan_ok = key == kNdUrl && ccore::lan_http_url(v);  // Navidrome on the home LAN
+    if ((key == kServerUrl || key == kNdUrl || key == kNtfyUrl) && !v.empty() &&
         v.rfind("https://", 0) != 0 && !lan_ok)
         return false;  // TLS only
-    if (std::string(k.key) == kNtfyTopics && !ccore::ntfy::valid_topic_list(v)) return false;
+    if (key == kNtfyTopics && !ccore::ntfy::valid_topic_list(v)) return false;
     return true;
 }
 

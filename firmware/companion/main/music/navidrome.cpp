@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstring>
+#include <string_view>
 #include <unordered_map>
 
 #include "ble_server.hpp"
@@ -216,12 +217,17 @@ bool sync_once() {
     for (auto& t : table) remote.push_back({t.id, t.suffix, 0, budget_for(t)});
 
     auto local = scan_local();
-    for (auto& t : table)
+    {
+        std::unordered_map<std::string_view, uint64_t> sizes;
+        sizes.reserve(local.size());
         for (auto& f : local)
-            if (f.id == t.id && !f.partial && f.suffix == t.suffix) {
-                t.size = f.size;
-                t.available = f.size > 0;
+            if (!f.partial && f.suffix == kFormat) sizes[f.id] = f.size;
+        for (auto& t : table)
+            if (auto f = sizes.find(t.id); f != sizes.end()) {
+                t.size = f->second;
+                t.available = t.size > 0;
             }
+    }
     // Several files per id (an original from before transcoding, a .part): the plan should
     // see the transcoded one.
     std::stable_partition(local.begin(), local.end(), [](const ccore::LocalFile& f) { return f.partial || f.suffix != kFormat; });

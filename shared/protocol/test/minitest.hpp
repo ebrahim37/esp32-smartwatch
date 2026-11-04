@@ -1,14 +1,13 @@
 // Tiny dependency-free test harness shared by host-side tests.
 #pragma once
 #include <cstdio>
-#include <functional>
 #include <vector>
 
 namespace minitest {
-struct Case { const char* name; std::function<void()> fn; };
+struct Case { const char* name; void (*fn)(); };
 inline std::vector<Case>& registry() { static std::vector<Case> r; return r; }
 inline int& failures() { static int f = 0; return f; }
-struct Reg { Reg(const char* n, std::function<void()> f) { registry().push_back({n, std::move(f)}); } };
+struct Reg { Reg(const char* n, void (*f)()) { registry().push_back({n, f}); } };
 inline int run_all() {
     for (auto& c : registry()) {
         int before = failures();

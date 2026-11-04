@@ -100,11 +100,11 @@ private:
         {
             app::Locked s;
             if (s->tracks_playlist != id_) return;
+            if (s->tracks.size() == shown_ && s->playback.track_id == shown_cur_) return;
             tracks = s->tracks;
             total = s->tracks_total;
             cur_id = s->playback.track_id;
         }
-        if (tracks.size() == shown_ && cur_id == shown_cur_) return;
         shown_ = tracks.size();
         shown_cur_ = cur_id;
         clear(list_);
@@ -460,20 +460,15 @@ lv_obj_t* mini_player(lv_obj_t* parent) {
 
 void mini_player_refresh(lv_obj_t* bar) {
     if (!bar) return;
-    swp::PlaybackStatus p;
-    int64_t rx;
-    {
-        app::Locked s;
-        p = s->playback;
-        rx = s->playback_rx_us;
-    }
+    app::Locked s;
+    const auto& p = s->playback;
     if (!has_track(p)) {
         lv_obj_add_flag(bar, LV_OBJ_FLAG_HIDDEN);
         return;
     }
     lv_obj_remove_flag(bar, LV_OBJ_FLAG_HIDDEN);
     set_text(lv_obj_get_child(bar, 0), p.title);
-    uint32_t pos = live_position(p, rx);
+    uint32_t pos = live_position(p, s->playback_rx_us);
     lv_bar_set_value(lv_obj_get_child(bar, 1), p.duration_ms ? static_cast<int32_t>(1000ull * pos / p.duration_ms) : 0, LV_ANIM_OFF);
     bool playing = p.state == static_cast<uint8_t>(swp::PlayState::Playing);
     set_text(lv_obj_get_child(lv_obj_get_child(bar, 2), 0), playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);

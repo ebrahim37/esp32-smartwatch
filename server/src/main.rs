@@ -7,7 +7,8 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt().with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info,tower_http=info".into())).init();
     let cfg = Config::from_env()?;
     std::fs::create_dir_all(&cfg.data_dir).context("DATA_DIR")?;
-    let state = app::AppState::new(cfg.clone())?;
+    let bind = cfg.bind;
+    let state = app::AppState::new(cfg)?;
 
     // Housekeeping: bound the tile cache.
     let hk_tiles = state.tiles.clone();
@@ -24,8 +25,8 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    let listener = tokio::net::TcpListener::bind(cfg.bind).await?;
-    tracing::info!("listening on {}", cfg.bind);
+    let listener = tokio::net::TcpListener::bind(bind).await?;
+    tracing::info!("listening on {bind}");
     axum::serve(listener, app::router(state))
         .with_graceful_shutdown(async {
             // SIGTERM is what Podman/systemd send on stop; SIGINT for interactive use.

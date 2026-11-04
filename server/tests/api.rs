@@ -118,6 +118,28 @@ async fn tile_is_converted_and_cached() {
 }
 
 #[tokio::test]
+async fn tile_bundle_framing_and_limit() {
+    let (app, _dir) = app_with_upstream().await;
+    let (s, b) = call(&app, "GET", "/v1/maps/bundle?lat=43.78&lon=-79.41&radius_m=100&zmin=12&zmax=12", true, None).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(&b[..4], b"SWB1");
+    let mut pos = 4;
+    let mut count = 0;
+    while b[pos] != 0xFF {
+        assert_eq!(b[pos], 12);
+        let len = u32::from_le_bytes(b[pos + 9..pos + 13].try_into().unwrap()) as usize;
+        assert_eq!(&b[pos + 13..pos + 17], b"SWT1");
+        pos += 13 + len;
+        count += 1;
+    }
+    assert!(count > 0 && count <= 4);
+    assert_eq!(pos + 1, b.len());
+    let (s, b) = call(&app, "GET", "/v1/maps/bundle?lat=43.78&lon=-79.41&radius_m=20000&zmin=12&zmax=19", true, None).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+    assert!(json_of(&b)["error"].as_str().unwrap().contains("tiles requested; reduce radius or zmax"));
+}
+
+#[tokio::test]
 async fn route_and_search() {
     let (app, _d) = app_with_upstream().await;
     let (s, b) = call(&app, "GET", "/v1/maps/route?from=43.78,-79.41&to=43.78,-79.40&mode=walk", true, None).await;

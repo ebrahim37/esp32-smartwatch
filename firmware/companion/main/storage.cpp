@@ -74,7 +74,7 @@ bool init_card() {
     host.slot = SDMMC_HOST_SLOT_1;
     host.max_freq_khz = SDMMC_FREQ_DEFAULT;  // 20 MHz: robust on 1-bit with long traces
     host.flags = SDMMC_HOST_FLAG_1BIT;
-    return sdmmc_card_init(&host, card) == ESP_OK;
+    return card && sdmmc_card_init(&host, card) == ESP_OK;
 }
 
 bool read_sector(uint32_t lba, uint8_t* buf) {
@@ -181,8 +181,7 @@ bool mount() {
 }
 
 void ensure_dir(const char* p) {
-    struct stat st;
-    if (stat(p, &st) != 0) mkdir(p, 0775);
+    mkdir(p, 0775);  // EEXIST is harmless; avoid a second directory scan on FAT.
 }
 
 }  // namespace
@@ -249,46 +248,39 @@ std::unique_ptr<ccore::LruIndex> load_index(const std::string& root, uint64_t& c
     // No (valid) index: rebuild from the directory tree. Access order is unknown, so every
     // block starts equally old.
     ESP_LOGI(TAG, "rebuilding map cache index for %s", root.c_str());
-    DIR* zd = opendir(root.c_str());
-    if (!zd) return lru;
-    while (struct dirent* ze = readdir(zd)) {
-        int z = atoi(ze->d_name);
-        if (z <= 0 || z > 20) continue;
-        std::string zp = root + "/" + ze->d_name;
-        DIR* xd = opendir(zp.c_str());
-        if (!xd) continue;
-        while (struct dirent* xe = readdir(xd)) {
-            if (xe->d_name[0] == '.') continue;
-            uint32_t x = strtoul(xe->d_name, nullptr, 10);
-            std::string xp = zp + "/" + xe->d_name;
-            DIR* yd = opendir(xp.c_str());
-            if (!yd) continue;
-            while (struct dirent* ye = readdir(yd)) {
-                if (ye->d_name[0] == '.') continue;
-                uint32_t y = strtoul(ye->d_name, nullptr, 10);
-                struct stat st;
-                std::string yp = xp + "/" + ye->d_name;
-                if (stat(yp.c_str(), &st) == 0 && S_ISREG(st.st_mode)) {
-                    lru->add(block_key(static_cast<uint8_t>(z), x, y), static_cast<int64_t>(on_card(st.st_size)), 0);
-                }
-            }
-            closedir(yd);
+    list_dir(root, [&](const char* zn, uint64_t, bool is_dir) {
+        int z = atoi(zn);
+        if (!is_dir || z <= 0 || z > 20) return;
+        std::string zp = root + "/" + zn;
+        list_dir(zp, [&](const char* xn, uint64_t, bool is_dir) {
+            if (!is_dir || xn[0] == '.') return;
+            uint32_t x = strtoul(xn, nullptr, 10);
+            list_dir(zp + "/" + xn, [&](const char* yn, uint64_t size, bool is_dir) {
+                if (!is_dir && yn[0] != '.')
+                    lru->add(block_key(static_cast<uint8_t>(z), x, strtoul(yn, nullptr, 10)), static_cast<int64_t>(on_card(size)), 0);
+            });
             vTaskDelay(1);
-        }
-        closedir(xd);
-    }
-    closedir(zd);
+        });
+    });
     return lru;
 }
 
-void evict_block(const std::string& key) {
+std::string tile_path_in(const std::string& root, uint8_t z, uint32_t x, uint32_t y) {
+    if (root.empty()) return "";
+    char suffix[40];
+    snprintf(suffix, sizeof suffix, "/%u/%lu/%lu.swt", z, (unsigned long)x, (unsigned long)y);
+    return root + suffix;
+}
+
+// Caller holds mu and tile_io; do not call tiles_dir()/tile_path() (they lock mu).
+void evict_block(const std::string& root, const std::string& key) {
     unsigned z = 0;
     unsigned long bx = 0, by = 0;
     if (sscanf(key.c_str(), "%u/%lu/%lu", &z, &bx, &by) != 3) return;
     for (uint32_t dx = 0; dx < (1u << kTileBlockShift); ++dx)
         for (uint32_t dy = 0; dy < (1u << kTileBlockShift); ++dy) {
             uint32_t x = (bx << kTileBlockShift) + dx, y = (by << kTileBlockShift) + dy;
-            unlink(tile_path(static_cast<uint8_t>(z), x, y).c_str());
+            unlink(tile_path_in(root, static_cast<uint8_t>(z), x, y).c_str());
         }
     lru->remove(key);
     lru_dirty = lru_sizes_dirty = true;
@@ -401,7 +393,10 @@ Info info() {
     return inf;
 }
 
-bool mounted() { return info().state == swp::SdState::Mounted; }
+bool mounted() {
+    std::lock_guard<std::mutex> g(mu);
+    return inf.state == swp::SdState::Mounted;
+}
 
 bool music_reserve(uint64_t bytes) {
     std::lock_guard<std::mutex> g(mu);
@@ -451,11 +446,7 @@ void set_tile_style(const std::string& style) {
 }
 
 std::string tile_path(uint8_t z, uint32_t x, uint32_t y) {
-    std::string root = tiles_dir();
-    if (root.empty()) return "";
-    char b[64];
-    snprintf(b, sizeof b, "%s/%u/%lu/%lu.swt", root.c_str(), z, (unsigned long)x, (unsigned long)y);
-    return b;
+    return tile_path_in(tiles_dir(), z, x, y);
 }
 
 bool tile_read(uint8_t z, uint32_t x, uint32_t y, std::vector<uint8_t>& out) {
@@ -479,13 +470,16 @@ bool tile_write(uint8_t z, uint32_t x, uint32_t y, const std::vector<uint8_t>& d
     if (!mounted() || !lru || root.empty()) return false;
     {
         std::lock_guard<std::mutex> g(mu);
+        uint64_t used = lru->used();
         // Category quota (4 GB, LRU with hysteresis) ...
-        for (auto& k : lru->plan_eviction(on_card(data.size()))) evict_block(k);
+        for (auto& k : lru->plan_eviction(on_card(data.size()))) evict_block(root, k);
+        inf.free += used - lru->used();
         // ... and the card-wide free-space reserve shared with music.
         if (inf.free < data.size() + ccore::kMinFreeReserve) {
             uint64_t need = data.size() + ccore::kMinFreeReserve - inf.free;
-            for (auto& k : lru->plan_free_bytes(need)) evict_block(k);
-            inf.free += need;  // refreshed from FatFs on the next usage poll
+            used = lru->used();
+            for (auto& k : lru->plan_free_bytes(need)) evict_block(root, k);
+            inf.free += used - lru->used();  // refreshed from FatFs on the next usage poll
         }
     }
     char dir[48];

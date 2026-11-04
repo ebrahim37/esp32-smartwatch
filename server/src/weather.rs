@@ -277,7 +277,9 @@ impl WeatherService {
         let raw: OpenMeteo = self.http.get(url).send().await?.error_for_status()?.json().await?;
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
         let s = summarize(&raw, now);
-        self.cache.lock().await.insert(key, (Instant::now(), s.clone()));
+        let mut cache = self.cache.lock().await;
+        cache.retain(|_, (at, _)| at.elapsed() < self.ttl);
+        cache.insert(key, (Instant::now(), s.clone()));
         Ok(s)
     }
 }

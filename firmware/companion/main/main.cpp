@@ -24,7 +24,6 @@
 #include "music/player.hpp"
 #include "net.hpp"
 #include "nvs_flash.h"
-#include "position.hpp"
 #include "storage.hpp"
 #include "web_config.hpp"
 
@@ -57,7 +56,6 @@ extern "C" void app_main(void) {
     }
 
     storage::start();
-    position::init();
     net::start();
 
     bt_core::init();

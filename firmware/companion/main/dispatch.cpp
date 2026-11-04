@@ -28,11 +28,6 @@ namespace {
 constexpr const char* TAG = "dispatch";
 esp_timer_handle_t tick_timer;
 
-uint32_t caps() {
-    return swp::kCapTime | swp::kCapPosition | swp::kCapWeather | swp::kCapMaps | swp::kCapNotifications | swp::kCapMusic |
-           swp::kCapWifiConfig | swp::kCapAudioDevices | swp::kCapConfig | swp::kCapTransfer | swp::kCapHttpProxy;
-}
-
 swp::TimeSync time_sync() {
     swp::TimeSync t;
     struct timeval tv;
@@ -91,7 +86,8 @@ void on_hello(uint16_t conn, const swp::Hello& h) {
     ble_server::set_role(conn, h.role);
     swp::HelloAck a;
     a.role = static_cast<uint8_t>(swp::Role::Companion);
-    a.capabilities = caps();
+    a.capabilities = swp::kCapTime | swp::kCapPosition | swp::kCapWeather | swp::kCapMaps | swp::kCapNotifications | swp::kCapMusic |
+                     swp::kCapWifiConfig | swp::kCapAudioDevices | swp::kCapConfig | swp::kCapTransfer | swp::kCapHttpProxy;
     a.firmware = esp_app_get_description()->version;
     a.device_name = config::get(config::kDeviceName, "SW Companion");
     ble_server::send(conn, a);

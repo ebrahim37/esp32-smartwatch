@@ -28,14 +28,23 @@ pub trait PoiSearch: Send + Sync {
     fn search<'a>(&'a self, query: &'a str, lat: f64, lon: f64, limit: usize) -> BoxFut<'a, AppResult<Vec<Place>>>;
 }
 
-fn s(v: &Value, k: &str) -> String {
-    v.get(k).and_then(|x| x.as_str()).unwrap_or_default().to_string()
+fn s<'a>(v: &'a Value, k: &str) -> &'a str {
+    v.get(k).and_then(|x| x.as_str()).unwrap_or_default()
 }
 
-fn pretty(tag: &str) -> String {
+pub(crate) fn pretty(tag: &str) -> String {
     let t = tag.replace('_', " ");
     let mut c = t.chars();
     c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+}
+
+pub(crate) fn address(number: &str, street: &str, city: &str) -> String {
+    let street = [number, street].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ");
+    match (street.is_empty(), city.is_empty()) {
+        (_, true) => street,
+        (true, false) => city.to_string(),
+        (false, false) => format!("{street}, {city}"),
+    }
 }
 
 pub fn parse_photon(body: &Value, lat: f64, lon: f64) -> Vec<Place> {
@@ -50,12 +59,10 @@ pub fn parse_photon(body: &Value, lat: f64, lon: f64) -> Vec<Place> {
         if name.is_empty() {
             continue;
         }
-        let street = [s(p, "housenumber"), s(p, "street")].iter().filter(|x| !x.is_empty()).cloned().collect::<Vec<_>>().join(" ");
-        let address = [street, s(p, "city")].iter().filter(|x| !x.is_empty()).cloned().collect::<Vec<_>>().join(", ");
         out.push(Place {
-            name,
-            category: pretty(&s(p, "osm_value")),
-            address,
+            name: name.to_string(),
+            category: pretty(s(p, "osm_value")),
+            address: address(s(p, "housenumber"), s(p, "street"), s(p, "city")),
             lat: plat,
             lon: plon,
             distance_m: haversine_m(lat, lon, plat, plon).round() as u32,
@@ -79,16 +86,10 @@ pub fn parse_overpass(body: &Value, lat: f64, lon: f64) -> Vec<Place> {
             };
             let kind =
                 ["amenity", "shop", "tourism", "leisure"].iter().find_map(|k| tags.get(*k).and_then(|v| v.as_str())).unwrap_or("place");
-            let street = [s(tags, "addr:housenumber"), s(tags, "addr:street")]
-                .iter()
-                .filter(|x| !x.is_empty())
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(" ");
             Some(Place {
                 name,
                 category: pretty(kind),
-                address: street,
+                address: address(s(tags, "addr:housenumber"), s(tags, "addr:street"), ""),
                 lat: plat,
                 lon: plon,
                 distance_m: haversine_m(lat, lon, plat, plon).round() as u32,
@@ -157,6 +158,15 @@ impl PoiSearch for OsmSearch {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn address_omits_missing_parts() {
+        assert_eq!(address("5000", "Yonge St", "Toronto"), "5000 Yonge St, Toronto");
+        assert_eq!(address("", "Yonge St", ""), "Yonge St");
+        assert_eq!(address("", "", "Toronto"), "Toronto");
+        assert_eq!(address("5000", "", ""), "5000");
+        assert_eq!(address("", "", ""), "");
+    }
 
     #[test]
     fn photon_features_to_places() {

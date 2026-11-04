@@ -98,7 +98,6 @@ class AlarmsScreen : public Screen {
 public:
     const char* title() const override { return "Alarms"; }
     void build(lv_obj_t* c) override {
-        c_ = c;
         lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
         lv_obj_set_style_pad_all(c, 12, 0);
         lv_obj_set_style_pad_row(c, 8, 0);
@@ -106,11 +105,11 @@ public:
     }
     void refresh(uint32_t d) override {
         if (!(d & app::kDirtyAlarms)) return;
-        clear(c_);
-        list_row(c_, "Add alarm", nullptr, nullptr, [] { push(new AlarmEdit(core::Alarm{})); }, color::orange(), LV_SYMBOL_PLUS);
-        if (!services::time_valid()) section_header(c_, "Clock not synced: alarms fire once time arrives");
+        clear(content);
+        list_row(content, "Add alarm", nullptr, nullptr, [] { push(new AlarmEdit(core::Alarm{})); }, color::orange(), LV_SYMBOL_PLUS);
+        if (!services::time_valid()) section_header(content, "Clock not synced: alarms fire once time arrives");
         for (auto& a : services::alarms()) {
-            lv_obj_t* r = list_row(c_, hhmm(a.hour, a.minute).c_str(), (a.label.empty() ? core::days_summary(a.days) : a.label + ", " + core::days_summary(a.days)).c_str(),
+            lv_obj_t* r = list_row(content, hhmm(a.hour, a.minute).c_str(), (a.label.empty() ? core::days_summary(a.days) : a.label + ", " + core::days_summary(a.days)).c_str(),
                                    nullptr, [a] { push(new AlarmEdit(a)); });
             lv_obj_t* sw = lv_switch_create(r);
             lv_obj_set_size(sw, 64, 36);
@@ -124,8 +123,6 @@ public:
         }
     }
 
-private:
-    lv_obj_t* c_ = nullptr;
 };
 
 std::string ago(uint32_t ts) {
@@ -183,7 +180,6 @@ class NotificationsScreen : public Screen {
 public:
     const char* title() const override { return "Notifications"; }
     void build(lv_obj_t* c) override {
-        c_ = c;
         lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
         lv_obj_set_style_pad_all(c, 12, 0);
         lv_obj_set_style_pad_row(c, 8, 0);
@@ -195,17 +191,17 @@ public:
     }
     void refresh(uint32_t d) override {
         if (!(d & app::kDirtyNotifications)) return;
-        clear(c_);
+        clear(content);
         std::deque<core::StoredNotification> items;
         {
             app::Locked s;
             items = s->notifications.items();
         }
         if (items.empty()) {
-            section_header(c_, "No notifications");
+            section_header(content, "No notifications");
             return;
         }
-        pill_button(c_, "Clear all", color::card2(), [] {
+        pill_button(content, "Clear all", color::card2(), [] {
             {
                 app::Locked s;
                 s->notifications.clear();
@@ -215,14 +211,12 @@ public:
         }, 360, 52);
         for (auto& n : items) {
             core::StoredNotification copy = n;
-            lv_obj_t* r = list_row(c_, n.title.c_str(), n.body.c_str(), ago(n.timestamp).c_str(), [copy] { push(new NotificationDetail(copy)); },
+            lv_obj_t* r = list_row(content, n.title.c_str(), n.body.c_str(), ago(n.timestamp).c_str(), [copy] { push(new NotificationDetail(copy)); },
                                    n.priority >= 4 ? color::red() : color::purple(), LV_SYMBOL_BELL);
             (void)r;
         }
     }
 
-private:
-    lv_obj_t* c_ = nullptr;
 };
 
 }  // namespace

@@ -140,6 +140,23 @@ TEST(forward_compatible_trailing_bytes) {
     CHECK_EQ(back->uptime_s, 42u);
 }
 
+TEST(appended_fields_accept_older_peers) {
+    auto p = encode_payload(PlaybackStatus{});
+    CHECK(p.size() >= 2);
+    p.resize(p.size() - 2);  // original status did not include the up-next list
+    auto playback = decode_payload<PlaybackStatus>(p);
+    CHECK(playback && playback->up_next.empty());
+    p.push_back(1);  // a partial list count must still fail
+    CHECK(!decode_payload<PlaybackStatus>(p));
+
+    p = encode_payload(CompanionStatus{});
+    p.resize(p.size() - 4);  // internet_age_s was appended later
+    auto companion = decode_payload<CompanionStatus>(p);
+    CHECK(companion && companion->internet_age_s == UINT32_MAX);
+    p.push_back(0);
+    CHECK(!decode_payload<CompanionStatus>(p));
+}
+
 TEST(frame_decoder_fragmented_and_resync) {
     Notification n;
     n.id = 0x1122334455667788ull;
@@ -266,6 +283,25 @@ TEST(transfer_rejects_too_large) {
     TransferAck ack;
     CHECK(rx.on_begin(b, ack) == TransferReceiver::Event::Failed);
     CHECK(!rx.active());
+}
+
+TEST(transfer_resume_requires_same_kind) {
+    auto blob = random_blob(500, 5);
+    TransferSender tx;
+    TransferReceiver rx(1000);
+    tx.start(1, TransferKind::MapTile, blob.data(), blob.size(), 100, 0, {7});
+    auto begin = tx.begin_message();
+    TransferAck ack;
+    rx.on_begin(begin, ack);
+    tx.on_ack(ack);
+    bool send_ack;
+    rx.on_chunk(*tx.next_chunk(), ack, send_ack);
+    CHECK_EQ(rx.received(), 100u);
+    begin.kind = static_cast<uint8_t>(TransferKind::HttpBody);
+    begin.start_offset = 100;
+    rx.on_begin(begin, ack);
+    CHECK_EQ(ack.next_offset, 0u);
+    CHECK(rx.data().empty());
 }
 
 TEST(transfer_backpressure_respects_window) {

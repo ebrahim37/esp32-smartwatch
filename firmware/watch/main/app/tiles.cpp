@@ -39,16 +39,14 @@ bool contains(const std::vector<Key>& v, const Key& k) { return std::find(v.begi
 
 }  // namespace
 
-void init() {}
-
 Blob get(const Key& k) {
     std::lock_guard<std::mutex> g(mu);
     for (size_t i = 0; i < cache.size(); ++i)
         if (cache[i].k == k) {
-            Entry e = cache[i];
+            Entry e = std::move(cache[i]);
             cache.erase(cache.begin() + static_cast<long>(i));
-            cache.push_front(e);
-            return e.swt;
+            cache.push_front(std::move(e));
+            return cache.front().swt;
         }
     return nullptr;
 }
@@ -135,15 +133,6 @@ void pump() {
         r.y = k.y;
         swlink::send(r);
     }
-}
-
-std::vector<uint8_t> encode_meta(const Key& k) {
-    std::vector<uint8_t> m;
-    swp::Writer w(m);
-    w.u8(k.z);
-    w.u32(k.x);
-    w.u32(k.y);
-    return m;
 }
 
 bool decode_meta(const std::vector<uint8_t>& meta, Key& k) {

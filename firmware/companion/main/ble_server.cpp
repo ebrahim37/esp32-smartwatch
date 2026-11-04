@@ -59,7 +59,6 @@ std::mutex mu;
 Session sessions[kMaxSessions];
 std::atomic<int64_t> pairing_until_us{0};
 std::atomic<bool> congested{false};
-bool advertising = false;
 
 struct TxItem {
     uint16_t conn_id;
@@ -115,8 +114,7 @@ void start_adv() {
     p.channel_map = ADV_CHNL_ALL;
     p.adv_filter_policy = ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY;
     esp_err_t err = esp_ble_gap_start_advertising(&p);
-    if (err == ESP_OK) advertising = true;
-    else ESP_LOGW(TAG, "start advertising failed: %s", esp_err_to_name(err));
+    if (err != ESP_OK) ESP_LOGW(TAG, "start advertising failed: %s", esp_err_to_name(err));
 }
 
 bool is_bonded(const uint8_t* bda) {
@@ -142,7 +140,6 @@ void gap_cb(esp_gap_ble_cb_event_t ev, esp_ble_gap_cb_param_t* p) {
                 ESP_LOGI(TAG, "advertising as \"%s\" (%02x:%02x:%02x:%02x:%02x:%02x)", config::get(config::kDeviceName, "SW Companion").c_str(),
                          a[0], a[1], a[2], a[3], a[4], a[5]);
             } else {
-                advertising = false;
                 ESP_LOGE(TAG, "advertising start failed: status %d", p->adv_start_cmpl.status);
             }
             break;
@@ -215,7 +212,6 @@ void gatts_cb(esp_gatts_cb_event_t ev, esp_gatt_if_t ifc, esp_ble_gatts_cb_param
                     queued_per_conn[i].store(0);
                     break;
                 }
-            advertising = false;
             ESP_LOGI(TAG, "connected conn %u", p->connect.conn_id);
             // Ask for encryption right away; bonded peers re-encrypt silently.
             esp_ble_set_encryption(p->connect.remote_bda, ESP_BLE_SEC_ENCRYPT_MITM);

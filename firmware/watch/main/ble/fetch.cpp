@@ -76,16 +76,13 @@ bool request(Request req, Callback cb) {
     m.headers = std::move(req.headers);
     m.body.assign(req.body.begin(), req.body.end());
     m.max_response = std::min(req.max_response, swp::kHttpMaxResponse);
+    std::vector<uint8_t> payload;
     {
         std::lock_guard<std::mutex> g(mu);
         if (pending.size() >= kMaxInFlight) return false;
-        m.id = next_id++;
-        if (next_id == 0) next_id = 1;
-    }
-    std::vector<uint8_t> payload = swp::encode_payload(m);
-    if (payload.size() > swp::kMaxPayload) return false;
-    {
-        std::lock_guard<std::mutex> g(mu);
+        do { m.id = next_id++; } while (m.id == 0 || pending.count(m.id));
+        payload = swp::encode_payload(m);
+        if (payload.size() > swp::kMaxPayload) return false;
         Pending& p = pending[m.id];
         p.cb = std::move(cb);
         p.deadline_us = esp_timer_get_time() + static_cast<int64_t>(req.timeout_ms) * 1000;

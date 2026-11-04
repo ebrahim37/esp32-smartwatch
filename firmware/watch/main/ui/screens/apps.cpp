@@ -23,7 +23,6 @@ class WeatherScreen : public Screen {
 public:
     const char* title() const override { return "Weather"; }
     void build(lv_obj_t* c) override {
-        c_ = c;
         lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
         lv_obj_set_flex_align(c, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
         lv_obj_set_style_pad_all(c, 12, 0);
@@ -33,7 +32,7 @@ public:
     }
     void refresh(uint32_t d) override {
         if (!(d & app::kDirtyWeather)) return;
-        clear(c_);
+        clear(content);
         swp::Weather w;
         bool valid;
         {
@@ -42,18 +41,18 @@ public:
             valid = s->weather_valid;
         }
         if (!valid) {
-            label(c_, "No weather data yet", &font_inter_20, color::muted());
-            label(c_, "The companion fetches it from the VPS helper.", &font_inter_16, color::muted());
+            label(content, "No weather data yet", &font_inter_20, color::muted());
+            label(content, "The companion fetches it from the VPS helper.", &font_inter_16, color::muted());
             return;
         }
-        lv_obj_t* wx = weather_row(c_, kWxRowW, kWxRowSplit);  // same row as the watch face
+        lv_obj_t* wx = weather_row(content, kWxRowW, kWxRowSplit);  // same row as the watch face
         lv_obj_set_style_translate_x(wx, -10, 0);
         weather_row_set(wx, w, true);
         char b[96];
 
         if (!w.hours.empty()) {
-            section_header(c_, "Hourly");
-            lv_obj_t* row = lv_obj_create(c_);
+            section_header(content, "Hourly");
+            lv_obj_t* row = lv_obj_create(content);
             lv_obj_remove_style_all(row);
             lv_obj_set_size(row, LV_PCT(100), 130);
             lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
@@ -81,7 +80,7 @@ public:
             }
         }
         if (!w.days.empty()) {
-            section_header(c_, "7-Day");
+            section_header(content, "7-Day");
             static const char* wd[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
             time_t now = time(nullptr);
             struct tm today;
@@ -93,7 +92,7 @@ public:
                 std::string sub = std::to_string(d2.precip_prob) + "% precip.";
                 std::string val = core::fmt_temp(d2.low_c10) + "\xC2\xB0 / " + core::fmt_temp(d2.high_c10) + "\xC2\xB0";
                 bool is_today = lt.tm_year == today.tm_year && lt.tm_yday == today.tm_yday;
-                lv_obj_t* r = list_row(c_, is_today ? "Today" : wd[lt.tm_wday % 7], sub.c_str(), val.c_str(), nullptr, color::card(),
+                lv_obj_t* r = list_row(content, is_today ? "Today" : wd[lt.tm_wday % 7], sub.c_str(), val.c_str(), nullptr, color::card(),
                                        wx_icon(d2.wmo_code, false));
                 lv_obj_t* ic = lv_obj_get_child(lv_obj_get_child(r, 0), 0);  // list_row's icon label
                 lv_obj_set_style_text_font(ic, &font_inter_24, 0);
@@ -105,12 +104,10 @@ public:
             struct tm lt;
             localtime_r(&tt, &lt);
             snprintf(b, sizeof b, "Updated %02d:%02d \xC2\xB7 Open-Meteo", lt.tm_hour, lt.tm_min);
-            label(c_, b, &font_inter_16, color::muted());
+            label(content, b, &font_inter_16, color::muted());
         }
     }
 
-private:
-    lv_obj_t* c_ = nullptr;
 };
 
 // ---- Timer -----------------------------------------------------------------------------

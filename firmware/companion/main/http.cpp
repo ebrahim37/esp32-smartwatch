@@ -108,6 +108,21 @@ std::string host_of(const std::string& url) {
     return url.substr(a, url.find('/', a) - a);
 }
 
+Result perform(esp_http_client_method_t method, const std::string& url, const Headers& headers, const char* data, size_t len,
+               std::vector<uint8_t>& body, size_t max_len, bool allow_lan_http = false) {
+    esp_http_client_handle_t c = open_client(url, method, headers, allow_lan_http);
+    if (!c) return {0, "invalid/non-TLS url"};
+    Result r;
+    int n = static_cast<int>(len);
+    esp_err_t err = esp_http_client_open(c, n);
+    if (err == ESP_OK && (n == 0 || esp_http_client_write(c, data, n) == n))
+        r = read_body(c, body, max_len);
+    else
+        r.error = err != ESP_OK ? esp_err_to_name(err) : "write failed";
+    esp_http_client_cleanup(c);
+    return r;
+}
+
 }  // namespace
 
 Session::~Session() { reset(); }
@@ -168,56 +183,20 @@ Result Session::get(const std::string& url, const Headers& headers, std::vector<
 }
 
 Result get(const std::string& url, const Headers& headers, std::vector<uint8_t>& body, size_t max_len, bool allow_lan_http) {
-    Result r;
-    esp_http_client_handle_t c = open_client(url, HTTP_METHOD_GET, headers, allow_lan_http);
-    if (!c) {
-        r.error = "invalid/non-TLS url";
-        return r;
-    }
-    esp_err_t err = esp_http_client_open(c, 0);
-    if (err != ESP_OK) {
-        r.error = esp_err_to_name(err);
-    } else {
-        r = read_body(c, body, max_len);
-    }
-    esp_http_client_cleanup(c);
+    Result r = perform(HTTP_METHOD_GET, url, headers, nullptr, 0, body, max_len, allow_lan_http);
     if (!r.ok()) ESP_LOGW(TAG, "GET failed: status %d %s", r.status, r.error.c_str());
     return r;
 }
 
 Result request(esp_http_client_method_t method, const std::string& url, const Headers& headers, const std::vector<uint8_t>& req_body,
                std::vector<uint8_t>& body, size_t max_len) {
-    Result r;
-    esp_http_client_handle_t c = open_client(url, method, headers);
-    if (!c) {
-        r.error = "invalid/non-TLS url";
-        return r;
-    }
-    int n = static_cast<int>(req_body.size());
-    esp_err_t err = esp_http_client_open(c, n);
-    if (err == ESP_OK && (n == 0 || esp_http_client_write(c, reinterpret_cast<const char*>(req_body.data()), n) == n))
-        r = read_body(c, body, max_len);
-    else
-        r.error = err != ESP_OK ? esp_err_to_name(err) : "write failed";
-    esp_http_client_cleanup(c);
-    return r;
+    return perform(method, url, headers, reinterpret_cast<const char*>(req_body.data()), req_body.size(), body, max_len);
 }
 
 Result post_json(const std::string& url, const Headers& headers, const std::string& json, std::vector<uint8_t>& body, size_t max_len) {
-    Result r;
-    esp_http_client_handle_t c = open_client(url, HTTP_METHOD_POST, headers);
-    if (!c) {
-        r.error = "invalid/non-TLS url";
-        return r;
-    }
-    esp_http_client_set_header(c, "Content-Type", "application/json");
-    esp_err_t err = esp_http_client_open(c, static_cast<int>(json.size()));
-    if (err == ESP_OK && esp_http_client_write(c, json.data(), static_cast<int>(json.size())) == static_cast<int>(json.size()))
-        r = read_body(c, body, max_len);
-    else
-        r.error = esp_err_to_name(err);
-    esp_http_client_cleanup(c);
-    return r;
+    Headers h = headers;
+    h.emplace_back("Content-Type", "application/json");
+    return perform(HTTP_METHOD_POST, url, h, json.data(), json.size(), body, max_len);
 }
 
 Result download(const std::string& url, const Headers& headers, const std::string& path, uint64_t resume_from, uint64_t expected_size,
@@ -265,6 +244,7 @@ Result download(const std::string& url, const Headers& headers, const std::strin
     }
     static constexpr size_t kBuf = 16384;
     auto* buf = static_cast<char*>(heap_caps_malloc(kBuf, MALLOC_CAP_SPIRAM));
+    if (!buf) r = {0, "out of memory"};
     setvbuf(f, nullptr, _IOFBF, 32 * 1024);  // whole-cluster SD writes
     uint64_t written = base;
     int64_t t0 = esp_timer_get_time(), sd_us = 0;
@@ -296,8 +276,9 @@ Result download(const std::string& url, const Headers& headers, const std::strin
         taskYIELD();
     }
     heap_caps_free(buf);
-    fflush(f);
-    fclose(f);
+    bool saved = fflush(f) == 0;
+    if (fclose(f) != 0) saved = false;
+    if (!saved) r = {0, "SD write failed"};
     if (r.ok() && (len > 0 || esp_http_client_is_chunked_response(c)) && !esp_http_client_is_complete_data_received(c)) {
         r.status = 0;
         r.error = "truncated";

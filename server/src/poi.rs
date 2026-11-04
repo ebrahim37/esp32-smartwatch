@@ -9,7 +9,10 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{geo::haversine_m, places::Place};
+use crate::{
+    geo::haversine_m,
+    places::{address, pretty, Place},
+};
 
 /// OSM keys whose objects are worth finding, in the order used to name the category.
 const KEYS: [&str; 13] = [
@@ -69,12 +72,6 @@ pub struct PoiIndex {
     pois: Vec<Poi>,
 }
 
-fn pretty(v: &str) -> String {
-    let t = v.replace('_', " ");
-    let mut c = t.chars();
-    c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
-}
-
 /// A representative point: the point itself, or the mean of a line's / outer ring's vertices.
 fn representative(geom: &Value) -> Option<(f64, f64)> {
     let coords = geom.get("coordinates")?;
@@ -109,8 +106,7 @@ pub fn parse_feature(f: &Value) -> Option<Poi> {
     }
     let (lat, lon) = representative(f.get("geometry")?)?;
     let category = if value == "yes" { pretty(key) } else { pretty(value) };
-    let street = [tag("addr:housenumber"), tag("addr:street")].iter().filter(|s| !s.is_empty()).copied().collect::<Vec<_>>().join(" ");
-    let address = [street.as_str(), tag("addr:city")].iter().filter(|s| !s.is_empty()).copied().collect::<Vec<_>>().join(", ");
+    let address = address(tag("addr:housenumber"), tag("addr:street"), tag("addr:city"));
     let keys = [value, tag("cuisine"), tag("brand"), tag("sport")].join(" ").replace(['_', ';'], " ").to_lowercase();
     Some(Poi { name: name.to_string(), name_lc: name.to_lowercase(), category, address, lat, lon, keys })
 }

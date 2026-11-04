@@ -304,7 +304,7 @@ mod tests {
     }
 
     #[test]
-    fn converts_to_small_indexed_png() {
+    fn converts_to_small_indexed_swt() {
         let mut img = image::RgbaImage::new(256, 256);
         for (x, y, p) in img.enumerate_pixels_mut() {
             *p = if (x / 32 + y / 32) % 2 == 0 { Rgba([0xf2, 0xef, 0xe9, 255]) } else { Rgba([0xaa, 0xd3, 0xdf, 255]) };

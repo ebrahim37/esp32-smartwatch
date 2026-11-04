@@ -154,13 +154,12 @@ pub fn parse_index(v: &Value) -> Vec<Region> {
 
 /// Smallest extract containing the whole box, else the smallest containing its centre.
 pub fn pick_region<'a>(regions: &'a [Region], bbox: &BBox) -> Option<&'a Region> {
-    let smallest = |it: Vec<&'a Region>| it.into_iter().min_by(|a, b| a.area.total_cmp(&b.area));
-    let whole: Vec<&Region> = regions.iter().filter(|r| bbox.corners().iter().all(|&(lat, lon)| r.contains(lat, lon))).collect();
-    if !whole.is_empty() {
-        return smallest(whole);
-    }
     let (clat, clon) = ((bbox.0[1] + bbox.0[3]) / 2.0, (bbox.0[0] + bbox.0[2]) / 2.0);
-    smallest(regions.iter().filter(|r| r.contains(clat, clon)).collect())
+    regions
+        .iter()
+        .filter(|r| bbox.corners().iter().all(|&(lat, lon)| r.contains(lat, lon)))
+        .min_by(|a, b| a.area.total_cmp(&b.area))
+        .or_else(|| regions.iter().filter(|r| r.contains(clat, clon)).min_by(|a, b| a.area.total_cmp(&b.area)))
 }
 
 // ---- Ring cache ---------------------------------------------------------------------------
@@ -250,9 +249,9 @@ async fn build_pois(dir: &Path) -> Result<PoiIndex> {
         ]))
     .await?;
     run(Command::new("osmium").args(["export", "--overwrite", "-f", "geojsonseq", "-o"]).arg(&seq).arg(&filtered)).await?;
-    let (seq2, out) = (seq.clone(), dir.join("pois.json"));
+    let out = dir.join("pois.json");
     let idx = tokio::task::spawn_blocking(move || -> Result<PoiIndex> {
-        let idx = PoiIndex::from_geojsonseq(&std::fs::read_to_string(&seq2)?);
+        let idx = PoiIndex::from_geojsonseq(&std::fs::read_to_string(&seq)?);
         idx.save(&out)?;
         Ok(idx)
     })
@@ -290,7 +289,7 @@ impl MapData {
     /// Cache namespace for rendered tiles, so a new area never serves tiles cached from an
     /// older one.
     pub fn tile_namespace(&self) -> Option<String> {
-        self.active().map(|a| a.id)
+        self.state.lock().unwrap().active.as_ref().map(|a| a.id.clone())
     }
 
     pub fn status(&self) -> Value {
@@ -382,7 +381,7 @@ impl MapData {
 
     /// True if the point lies inside the active area at all (no margin).
     pub fn covers(&self, lat: f64, lon: f64) -> bool {
-        self.active().is_some_and(|a| a.bbox.contains(lat, lon))
+        self.state.lock().unwrap().active.as_ref().is_some_and(|a| a.bbox.contains(lat, lon))
     }
 
     fn keep(&self) -> Vec<PathBuf> {
@@ -453,7 +452,7 @@ impl MapData {
             return Ok(area);
         }
         let regions = self.regions().await.context("Geofabrik index")?;
-        let region = pick_region(&regions, &bbox).context("no Geofabrik extract covers this location")?.clone();
+        let region = pick_region(&regions, &bbox).context("no Geofabrik extract covers this location")?;
         let extract = root.join("extracts").join(format!("{}.osm.pbf", region.id.replace('/', "_")));
         if force {
             let _ = tokio::fs::remove_file(&extract).await; // fetch the latest Geofabrik extract

@@ -7,7 +7,7 @@
 #include <mutex>
 #include <unordered_map>
 
-#include "cJSON.h"
+#include "json.hpp"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "storage.hpp"
@@ -70,14 +70,9 @@ void rebuild_all_songs() {
     std::sort(all_songs.begin(), all_songs.end(), [](uint32_t a, uint32_t b) { return strcasecmp(tracks[a].title.c_str(), tracks[b].title.c_str()) < 0; });
 }
 
-std::string jstr(const cJSON* o, const char* k) {
-    const cJSON* v = cJSON_GetObjectItemCaseSensitive(o, k);
-    return cJSON_IsString(v) && v->valuestring ? v->valuestring : "";
-}
-
 uint64_t jnum(const cJSON* o, const char* k) {
-    const cJSON* v = cJSON_GetObjectItemCaseSensitive(o, k);
-    return cJSON_IsNumber(v) && v->valuedouble > 0 ? static_cast<uint64_t>(v->valuedouble) : 0;
+    double v = json::number(o, k);
+    return v > 0 ? static_cast<uint64_t>(v) : 0;
 }
 
 }  // namespace
@@ -94,8 +89,7 @@ void load() {
     storage::list_dir(storage::kMusicDir, [&](const char* name, uint64_t size, bool is_dir) {
         if (!is_dir) present.emplace(name, size);
     });
-    raw.push_back(0);
-    cJSON* root = cJSON_Parse(reinterpret_cast<char*>(raw.data()));
+    cJSON* root = cJSON_ParseWithLength(reinterpret_cast<const char*>(raw.data()), raw.size());
     if (!root || !cJSON_IsArray(cJSON_GetObjectItemCaseSensitive(root, "tracks"))) {
         ESP_LOGW(TAG, "library.json unreadable or old format; will be rebuilt by the next sync");
         cJSON_Delete(root);
@@ -105,11 +99,11 @@ void load() {
     const cJSON* t;
     cJSON_ArrayForEach(t, cJSON_GetObjectItemCaseSensitive(root, "tracks")) {
         Track tr;
-        tr.id = jstr(t, "id");
-        tr.title = jstr(t, "title");
-        tr.artist = jstr(t, "artist");
-        tr.album = jstr(t, "album");
-        tr.suffix = jstr(t, "suffix");
+        tr.id = json::string(t, "id");
+        tr.title = json::string(t, "title");
+        tr.artist = json::string(t, "artist");
+        tr.album = json::string(t, "album");
+        tr.suffix = json::string(t, "suffix");
         tr.duration_s = static_cast<uint32_t>(jnum(t, "duration"));
         tr.size = jnum(t, "size");
         auto f = present.find(tr.id + "." + tr.suffix);
@@ -120,8 +114,8 @@ void load() {
     const cJSON* pl;
     cJSON_ArrayForEach(pl, cJSON_GetObjectItemCaseSensitive(root, "playlists")) {
         Playlist p;
-        p.id = jstr(pl, "id");
-        p.name = jstr(pl, "name");
+        p.id = json::string(pl, "id");
+        p.name = json::string(pl, "name");
         p.duration_s = static_cast<uint32_t>(jnum(pl, "duration"));
         const cJSON* i;
         cJSON_ArrayForEach(i, cJSON_GetObjectItemCaseSensitive(pl, "tracks")) {

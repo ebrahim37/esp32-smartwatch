@@ -18,10 +18,18 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 B="$ROOT/build"
 
 # Re-enter the Nix dev shell (ESP-IDF, Rust) when the toolchain is not loaded.
-if { [ -z "${IDF_PATH:-}" ] || ! command -v cargo >/dev/null 2>&1; } && [ -z "${SW_IN_NIX:-}" ]; then
-    export SW_IN_NIX=1
-    exec nix develop "$ROOT" --command "$0" "$@"
-fi
+dev_shell="$ROOT"
+required_tools=(idf.py cargo)
+case "${1:-}:${2:-}" in
+    test:*) dev_shell+="#host"; required_tools=(cargo cmake ninja) ;;
+    build:server) dev_shell+="#host"; required_tools=(cargo) ;;
+esac
+for tool in "${required_tools[@]}"; do
+    if ! command -v "$tool" >/dev/null 2>&1 && [ -z "${SW_IN_NIX:-}" ]; then
+        export SW_IN_NIX=1
+        exec nix develop "$dev_shell" --command "$0" "$@"
+    fi
+done
 export IDF_COMPONENT_CACHE_PATH="$B/cache/idf-components"
 export CARGO_TARGET_DIR="$B/server"
 
@@ -51,7 +59,7 @@ run_tests() {
     cmake --build "$B/host"
     (cd "$B/host" && ctest --output-on-failure)
     echo "== Server tests =="
-    (cd "$ROOT/server" && cargo test --locked && cargo clippy --locked --all-targets -- -D warnings)
+    (cd "$ROOT/server" && cargo fmt --check && cargo test --locked && cargo clippy --locked --all-targets -- -D warnings)
     echo "All host tests passed."
 }
 
@@ -163,7 +171,6 @@ fonts() {
     # Large weather icon beside the temperature (Weather app, watch face).
     npx -y "$LV_FONT_CONV" --no-compress --no-prefilter --bpp 4 --size 44 --format lvgl --lv-include lvgl.h \
         --font "$FA_WOFF" -r "$WX_SYMS" -o "$OUT/font_wx_44.c" --lv-font-name font_wx_44
-    gen_digits font_digits_132 132 InterDisplay-SemiBold.ttf
     echo "fonts written to $OUT"
 }
 

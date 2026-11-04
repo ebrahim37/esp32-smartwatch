@@ -169,6 +169,11 @@ TEST(lan_http_url_only_private_ipv4) {
     CHECK(!lan_http_url("http://192.168.1"));
     CHECK(!lan_http_url("https://192.168.1.2"));
     CHECK(!lan_http_url("http://192.168.1.256"));
+    CHECK(!lan_http_url("http://192.168.1.2.5"));
+    CHECK(!lan_http_url("http://192.168.1.2."));
+    CHECK(!lan_http_url("http://192.168..2"));
+    CHECK(!lan_http_url("http://192.168.1.2@evil.com"));
+    CHECK(lan_http_url("http://192.168.1.2/path?x=1#part"));
 }
 
 TEST(md5_and_subsonic_token) {
@@ -302,6 +307,19 @@ TEST(pcm_resamples_48k_and_24bit) {
     CHECK_EQ(out[100], 0x1234);
     CHECK(!c.configure(1000, 2, 16));
     CHECK(!c.configure(44100, 2, 12));
+}
+
+TEST(pcm_unsigned_8bit_extremes) {
+    PcmConverter c;
+    CHECK(c.configure(44100, 1, 8));
+    const uint8_t in[] = {0, 128, 255, 0};
+    int16_t out[6];
+    size_t used = 0;
+    CHECK_EQ(c.process(in, sizeof in, out, 3, used), 3u);
+    CHECK_EQ(used, sizeof in);
+    CHECK(out[0] == -32768 && out[1] == -32768);
+    CHECK(out[2] == 0 && out[3] == 0);
+    CHECK(out[4] == 32512 && out[5] == 32512);
 }
 
 TEST(ntfy_topics) {

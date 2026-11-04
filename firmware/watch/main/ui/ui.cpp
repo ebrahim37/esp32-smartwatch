@@ -1,5 +1,6 @@
 #include "ui/ui.hpp"
 
+#include <cstring>
 #include <vector>
 
 #include "app/services.hpp"
@@ -125,7 +126,7 @@ void show_next_alert() {
         return;
     }
     alert_obj = modal_base();
-    lv_obj_t* icon = label(alert_obj, a.kind == app::Alert::Alarm ? LV_SYMBOL_BELL : LV_SYMBOL_BELL, &font_inter_32,
+    lv_obj_t* icon = label(alert_obj, LV_SYMBOL_BELL, &font_inter_32,
                            a.kind == app::Alert::Alarm ? color::orange() : color::green());
     lv_obj_align(icon, LV_ALIGN_TOP_MID, 0, 90);
     lv_obj_t* t = label(alert_obj, a.title.c_str(), &font_inter_32);
@@ -269,10 +270,14 @@ lv_obj_t* label(lv_obj_t* parent, const char* text, const lv_font_t* font, lv_co
 }
 
 void set_text(lv_obj_t* lbl, const std::string& s) {
+    set_text(lbl, s.c_str());
+}
+
+void set_text(lv_obj_t* lbl, const char* s) {
     if (!lbl) return;
     const char* cur = lv_label_get_text(lbl);
-    if (cur && s == cur) return;
-    lv_label_set_text(lbl, s.c_str());
+    if (cur && std::strcmp(s, cur) == 0) return;
+    lv_label_set_text(lbl, s);
 }
 
 lv_obj_t* pill_button(lv_obj_t* parent, const char* text, lv_color_t bg, Fn fn, int w, int h) {
@@ -377,16 +382,7 @@ lv_obj_t* switch_row(lv_obj_t* parent, const char* title, bool on_state, std::fu
     lv_obj_set_size(sw, 64, 36);
     lv_obj_set_style_bg_color(sw, color::green(), sel(LV_PART_INDICATOR, LV_STATE_CHECKED));
     if (on_state) lv_obj_add_state(sw, LV_STATE_CHECKED);
-    auto* f = new std::function<void(bool)>(std::move(fn));
-    lv_obj_add_event_cb(
-        sw,
-        [](lv_event_t* e) {
-            auto* fp = static_cast<std::function<void(bool)>*>(lv_event_get_user_data(e));
-            (*fp)(lv_obj_has_state(static_cast<lv_obj_t*>(lv_event_get_target(e)), LV_STATE_CHECKED));
-        },
-        LV_EVENT_VALUE_CHANGED, f);
-    lv_obj_add_event_cb(
-        sw, [](lv_event_t* e) { delete static_cast<std::function<void(bool)>*>(lv_event_get_user_data(e)); }, LV_EVENT_DELETE, f);
+    on(sw, LV_EVENT_VALUE_CHANGED, [sw, fn = std::move(fn)] { fn(lv_obj_has_state(sw, LV_STATE_CHECKED)); });
     return r;
 }
 

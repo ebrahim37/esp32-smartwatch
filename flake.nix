@@ -43,23 +43,18 @@
           dontCheckRuntimeDeps = true;
           pythonImportsCheck = [ ];
         };
+        hostTools = with pkgs; [ rustc cargo clippy rustfmt cmake ninja gcc jq ];
       in {
         packages.esp-idf = esp-idf;
         packages.idf-component-manager = idf-component-manager;
 
         devShells.default = pkgs.mkShell {
           name = "smartwatch-dev";
-          buildInputs = [
+          buildInputs = hostTools ++ [
             esp-idf
-            pkgs.rustc
-            pkgs.cargo
-            pkgs.clippy
-            pkgs.rustfmt
             pkgs.pkg-config
             pkgs.nodejs_22  # npx lv_font_conv (scripts/sw fonts)
             pkgs.gnumake
-            pkgs.gcc
-            pkgs.jq
             pkgs.zip
           ];
           shellHook = ''
@@ -74,7 +69,8 @@
 
         # Lightweight shell for host-side tests and server work without ESP-IDF.
         devShells.host = pkgs.mkShell {
-          buildInputs = [ pkgs.rustc pkgs.cargo pkgs.clippy pkgs.rustfmt pkgs.cmake pkgs.ninja pkgs.gcc pkgs.jq ];
+          buildInputs = hostTools;
+          shellHook = ''export CARGO_TARGET_DIR="$PWD/build/server"'';
         };
       });
 }

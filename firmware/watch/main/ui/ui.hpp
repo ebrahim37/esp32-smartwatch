@@ -18,7 +18,6 @@ LV_FONT_DECLARE(font_inter_20)
 LV_FONT_DECLARE(font_inter_24)
 LV_FONT_DECLARE(font_inter_32)
 LV_FONT_DECLARE(font_digits_64)
-LV_FONT_DECLARE(font_digits_132)
 LV_FONT_DECLARE(font_digits_84)
 LV_FONT_DECLARE(font_wx_44)
 }
@@ -121,6 +120,7 @@ lv_obj_t* section_header(lv_obj_t* parent, const char* text);
 lv_obj_t* card(lv_obj_t* parent);
 void clear(lv_obj_t* obj);  // deletes children
 void set_text(lv_obj_t* lbl, const std::string& s);  // no-op if unchanged (avoids redraws)
+void set_text(lv_obj_t* lbl, const char* s);
 
 // ---- Overlays ------------------------------------------------------------------------------
 void toast(const std::string& text);

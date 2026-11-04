@@ -100,8 +100,6 @@ enum class MsgType : uint8_t {
     HttpResponse = 0x81,
 };
 
-const char* msg_type_name(MsgType t);
-
 enum Capability : uint32_t {
     kCapTime = 1u << 0,
     kCapPosition = 1u << 1,
@@ -529,7 +527,8 @@ struct PlaybackStatus {
     void fields(A& a) {
         a.u8(state); a.str8(playlist_id); a.u16(index); a.str8(track_id); a.str8(title); a.str8(artist);
         a.str8(album); a.u32(position_ms); a.u32(duration_ms); a.u8(shuffle); a.u8(repeat); a.u8(volume);
-        a.u8(sink_connected); a.str8(error); a.list(up_next, 4);
+        a.u8(sink_connected); a.str8(error);
+        if (a.more()) a.list(up_next, 4);
     }
 };
 
@@ -749,7 +748,8 @@ struct CompanionStatus {
         a.str8(firmware); a.u32(uptime_s); a.u8(sd_state); a.u32(sd_total_mb); a.u32(sd_free_mb);
         a.u32(music_mb); a.u32(maps_mb); a.u8(net_state); a.u8(net_provider); a.u8(server_ok);
         a.u8(sync_state); a.u16(sync_done); a.u16(sync_total); a.u32(heap_free); a.u32(psram_free);
-        a.u16(notif_pending); a.u32(last_notif_poll); a.u32(internet_age_s);
+        a.u16(notif_pending); a.u32(last_notif_poll);
+        if (a.more()) a.u32(internet_age_s);
     }
 };
 

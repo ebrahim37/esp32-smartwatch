@@ -30,7 +30,7 @@ constexpr int kMaxRoutePts = 600;  // drawn vertices (the visible stretch of the
 struct TileSlot {
     tiles::Key key{};
     tiles::Blob blob;
-    lv_image_dsc_t* dsc = nullptr;
+    lv_image_dsc_t dsc{};
     lv_obj_t* img = nullptr;
     uint16_t* px = nullptr;  // 256x256 RGB565 in PSRAM, owned by the slot
 };
@@ -40,7 +40,7 @@ constexpr size_t kMaxFavs = 20;
 
 std::vector<swp::Place> load_favs() {
     auto r = swp::decode_payload<swp::MapSearchResults>(settings::blob("favs"));
-    return r ? r->places : std::vector<swp::Place>{};
+    return r ? std::move(r->places) : std::vector<swp::Place>{};
 }
 
 void save_favs(const std::vector<swp::Place>& v) {
@@ -59,11 +59,9 @@ std::optional<swp::Place> g_route_place;
 Screen* make_place(const swp::Place& p, int pops);
 
 void release_slot(TileSlot& s) {
-    if (s.dsc) {
-        lv_image_cache_drop(s.dsc);  // decoded pixels are keyed by the descriptor address
-        lv_image_header_cache_drop(s.dsc);
-        delete s.dsc;
-        s.dsc = nullptr;
+    if (s.blob) {
+        lv_image_cache_drop(&s.dsc);  // decoded pixels are keyed by the descriptor address
+        lv_image_header_cache_drop(&s.dsc);
     }
     s.blob.reset();
 }
@@ -219,22 +217,17 @@ private:
         push(make_place(*g_route_place, 1));
     }
 
-    bool position(double& lat, double& lon) {
+    void position(double& lat, double& lon) {
         app::Locked s;
-        if (!s->position_valid) return false;
-        lat = core::e7_to_deg(s->position.lat_e7);
-        lon = core::e7_to_deg(s->position.lon_e7);
-        return true;
+        // TODO(PROTOTYPE): same dummy fix the companion reports, until it arrives.
+        lat = s->position_valid ? core::e7_to_deg(s->position.lat_e7) : 43 + 46.0 / 60 + 48.3 / 3600;
+        lon = s->position_valid ? core::e7_to_deg(s->position.lon_e7) : -(79 + 24.0 / 60 + 42.7 / 3600);
     }
 
     void recenter() {
         follow_ = true;
         double lat, lon;
-        if (!position(lat, lon)) {
-            // TODO(PROTOTYPE): same dummy fix the companion reports, until it arrives.
-            lat = 43 + 46.0 / 60 + 48.3 / 3600;
-            lon = -(79 + 24.0 / 60 + 42.7 / 3600);
-        }
+        position(lat, lon);
         center_ = core::latlon_to_px(lat, lon, zoom_);
         layout();
     }
@@ -282,15 +275,14 @@ private:
                         if (!s.px) s.px = static_cast<uint16_t*>(heap_caps_malloc(256 * 256 * 2, MALLOC_CAP_SPIRAM));
                         if (blob && s.px && tiles::decode(blob, s.px)) {
                             s.blob = blob;
-                            s.dsc = new lv_image_dsc_t{};
-                            s.dsc->header.magic = LV_IMAGE_HEADER_MAGIC;
-                            s.dsc->header.cf = LV_COLOR_FORMAT_RGB565;
-                            s.dsc->header.w = 256;
-                            s.dsc->header.h = 256;
-                            s.dsc->header.stride = 256 * 2;
-                            s.dsc->data_size = 256 * 256 * 2;
-                            s.dsc->data = reinterpret_cast<const uint8_t*>(s.px);
-                            lv_image_set_src(s.img, s.dsc);
+                            s.dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
+                            s.dsc.header.cf = LV_COLOR_FORMAT_RGB565;
+                            s.dsc.header.w = 256;
+                            s.dsc.header.h = 256;
+                            s.dsc.header.stride = 256 * 2;
+                            s.dsc.data_size = 256 * 256 * 2;
+                            s.dsc.data = reinterpret_cast<const uint8_t*>(s.px);
+                            lv_image_set_src(s.img, &s.dsc);
                         }
                     }
                 }
@@ -325,10 +317,7 @@ private:
         else set_text(status_, "");
 
         double lat, lon;
-        if (!position(lat, lon)) {
-            lat = 43 + 46.0 / 60 + 48.3 / 3600;
-            lon = -(79 + 24.0 / 60 + 42.7 / 3600);
-        }
+        position(lat, lon);
         lv_point_t me = to_screen(core::deg_to_e7(lat), core::deg_to_e7(lon));
         lv_obj_set_pos(dot_, me.x - 12, me.y - 12);
         lv_obj_set_pos(cone_, me.x - 46, me.y - 46);
@@ -348,8 +337,7 @@ private:
                 snprintf(b, sizeof b, "%.1f km \xC2\xB7 %u min\n%s", r.distance_m / 1000.0, static_cast<unsigned>((r.duration_s + 59) / 60),
                          first.c_str());
                 text = b;
-                route_pts_.clear();
-                for (auto& p : r.points) route_pts_.push_back(p);
+                route_pts_ = r.points;
             } else if (s->route_pending) {
                 text = "Finding route...";
             }
@@ -562,12 +550,11 @@ public:
         lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
         lv_obj_set_style_pad_all(c, 12, 0);
         lv_obj_set_style_pad_row(c, 8, 0);
-        list_ = c;
         refresh(0xFFFFFFFFu);
     }
     void refresh(uint32_t d) override {
         if (!(d & app::kDirtySearch)) return;
-        clear(list_);
+        clear(content);
         swp::MapSearchResults r;
         bool pending;
         std::string err;
@@ -577,19 +564,18 @@ public:
             pending = s->search_pending;
             err = s->last_error_text;
         }
-        section_header(list_, q_.empty() ? "Places nearby" : ("Results for \"" + q_ + "\"").c_str());
+        section_header(content, q_.empty() ? "Places nearby" : ("Results for \"" + q_ + "\"").c_str());
         if (pending) {
-            section_header(list_, "Searching...");
+            section_header(content, "Searching...");
         } else if (r.query != q_ || r.places.empty()) {
-            section_header(list_, err.empty() ? "No results" : err.c_str());
+            section_header(content, err.empty() ? "No results" : err.c_str());
         } else {
-            for (auto& p : r.places) place_row(list_, p, 3, color::red(), LV_SYMBOL_GPS);
+            for (auto& p : r.places) place_row(content, p, 3, color::red(), LV_SYMBOL_GPS);
         }
     }
 
 private:
     std::string q_;
-    lv_obj_t* list_ = nullptr;
 };
 
 class SearchScreen : public Screen {

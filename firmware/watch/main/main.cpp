@@ -5,7 +5,6 @@
 #include "app/services.hpp"
 #include "app/settings.hpp"
 #include "app/state.hpp"
-#include "app/tiles.hpp"
 #include "ble/central.hpp"
 #include "ble/link.hpp"
 #include "board.hpp"
@@ -34,7 +33,6 @@ extern "C" void app_main(void) {
     app::init();
 
     ESP_ERROR_CHECK(board::init());
-    tiles::init();
 
     if (board::lvgl_lock(1000)) {
         ui::init();

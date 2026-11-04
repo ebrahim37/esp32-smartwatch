@@ -179,12 +179,8 @@ void a2d_cb(esp_a2d_cb_event_t ev, esp_a2d_cb_param_t* p) {
             if (p->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
                 is_connected.store(true);
                 memcpy(peer, p->conn_stat.remote_bda, 6);
-                if (!have_peer) {
-                    have_peer = true;
-                    save_peer();
-                } else {
-                    save_peer();
-                }
+                have_peer = true;
+                save_peer();
                 esp_bt_gap_set_scan_mode(ESP_BT_NON_CONNECTABLE, ESP_BT_NON_DISCOVERABLE);
                 set_state(swp::SinkState::Connected);
                 media_ready.store(false);

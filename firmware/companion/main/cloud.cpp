@@ -12,12 +12,10 @@
 #include <new>
 
 #include "ble_server.hpp"
-#include "cJSON.h"
-#include "ccore/backoff.hpp"
+#include "json.hpp"
 #include "ccore/subsonic.hpp"
 #include "config.hpp"
 #include "esp_log.h"
-#include "esp_random.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -56,7 +54,6 @@ struct Job {
 
 static_assert(std::is_trivially_copyable_v<Job>);  // FreeRTOS queues copy bytewise
 QueueHandle_t jobs;
-TaskHandle_t worker = nullptr;
 TaskHandle_t xfer_task_handle = nullptr;
 std::mutex mu;
 http::Session helper;  // keep-alive connection to the helper, used only by the worker task
@@ -122,16 +119,6 @@ std::string server() {
     return s;
 }
 
-double num(const cJSON* o, const char* k, double def = 0) {
-    const cJSON* v = cJSON_GetObjectItemCaseSensitive(o, k);
-    return cJSON_IsNumber(v) ? v->valuedouble : def;
-}
-
-std::string str(const cJSON* o, const char* k) {
-    const cJSON* v = cJSON_GetObjectItemCaseSensitive(o, k);
-    return cJSON_IsString(v) && v->valuestring ? v->valuestring : "";
-}
-
 int16_t c10(double v) { return static_cast<int16_t>(std::lround(std::clamp(v, -300.0, 300.0) * 10)); }
 
 void send_error(uint16_t conn, swp::ErrorCode code, swp::MsgType ref, const std::string& msg) {
@@ -156,48 +143,47 @@ bool fetch_weather() {
     srv_ok.store(r.ok());
     net::set_server_ok(r.ok());
     if (!r.ok()) return false;
-    body.push_back(0);
-    cJSON* j = cJSON_Parse(reinterpret_cast<char*>(body.data()));
+    cJSON* j = cJSON_ParseWithLength(reinterpret_cast<const char*>(body.data()), body.size());
     if (!j) return false;
     swp::Weather w;
-    w.updated_at = static_cast<uint32_t>(num(j, "updated_at"));
-    w.wmo_code = static_cast<uint8_t>(num(j, "code"));
-    w.description = str(j, "description");
-    w.temp_c10 = c10(num(j, "temp_c"));
-    w.low_c10 = c10(num(j, "low_c"));
-    w.high_c10 = c10(num(j, "high_c"));
-    w.wind_kmh10 = static_cast<uint16_t>(std::lround(std::clamp(num(j, "wind_kmh"), 0.0, 6000.0) * 10));
-    w.uv10 = static_cast<uint16_t>(std::lround(std::clamp(num(j, "uv"), 0.0, 6000.0) * 10));
+    w.updated_at = static_cast<uint32_t>(json::number(j, "updated_at"));
+    w.wmo_code = static_cast<uint8_t>(json::number(j, "code"));
+    w.description = json::string(j, "description");
+    w.temp_c10 = c10(json::number(j, "temp_c"));
+    w.low_c10 = c10(json::number(j, "low_c"));
+    w.high_c10 = c10(json::number(j, "high_c"));
+    w.wind_kmh10 = static_cast<uint16_t>(std::lround(std::clamp(json::number(j, "wind_kmh"), 0.0, 6000.0) * 10));
+    w.uv10 = static_cast<uint16_t>(std::lround(std::clamp(json::number(j, "uv"), 0.0, 6000.0) * 10));
     const cJSON* p = cJSON_GetObjectItemCaseSensitive(j, "precip");
     if (cJSON_IsObject(p)) {
-        std::string kind = str(p, "kind");
+        auto kind = json::string(p, "kind");
         w.precip_kind = static_cast<uint8_t>(kind == "rain" ? swp::PrecipKind::Rain : kind == "snow" ? swp::PrecipKind::Snow
                                                               : kind == "mixed" ? swp::PrecipKind::Mixed : kind == "none" ? swp::PrecipKind::None
                                                                                                                   : swp::PrecipKind::Unknown);
         const cJSON* m = cJSON_GetObjectItemCaseSensitive(p, "in_minutes");
         w.precip_in_min = cJSON_IsNumber(m) ? static_cast<int32_t>(m->valuedouble) : -1;
-        w.precip_horizon_h = static_cast<uint8_t>(num(p, "horizon_h"));
+        w.precip_horizon_h = static_cast<uint8_t>(json::number(p, "horizon_h"));
     }
     const cJSON* it;
     cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(j, "days")) {
         if (w.days.size() >= 7) break;
         swp::WeatherDay d;
-        d.date = static_cast<uint32_t>(num(it, "date"));
-        d.wmo_code = static_cast<uint8_t>(num(it, "code"));
-        d.low_c10 = c10(num(it, "low_c"));
-        d.high_c10 = c10(num(it, "high_c"));
-        d.precip_prob = static_cast<uint8_t>(std::clamp(num(it, "precip_prob"), 0.0, 100.0));
-        d.precip_mm10 = static_cast<uint16_t>(std::clamp(num(it, "precip_mm") * 10, 0.0, 65535.0));
-        d.uv_max10 = static_cast<uint16_t>(std::clamp(num(it, "uv_max") * 10, 0.0, 65535.0));
+        d.date = static_cast<uint32_t>(json::number(it, "date"));
+        d.wmo_code = static_cast<uint8_t>(json::number(it, "code"));
+        d.low_c10 = c10(json::number(it, "low_c"));
+        d.high_c10 = c10(json::number(it, "high_c"));
+        d.precip_prob = static_cast<uint8_t>(std::clamp(json::number(it, "precip_prob"), 0.0, 100.0));
+        d.precip_mm10 = static_cast<uint16_t>(std::clamp(json::number(it, "precip_mm") * 10, 0.0, 65535.0));
+        d.uv_max10 = static_cast<uint16_t>(std::clamp(json::number(it, "uv_max") * 10, 0.0, 65535.0));
         w.days.push_back(d);
     }
     cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(j, "hours")) {
         if (w.hours.size() >= 24) break;
         swp::WeatherHour h;
-        h.time = static_cast<uint32_t>(num(it, "time"));
-        h.wmo_code = static_cast<uint8_t>(num(it, "code"));
-        h.temp_c10 = c10(num(it, "temp_c"));
-        h.precip_prob = static_cast<uint8_t>(std::clamp(num(it, "precip_prob"), 0.0, 100.0));
+        h.time = static_cast<uint32_t>(json::number(it, "time"));
+        h.wmo_code = static_cast<uint8_t>(json::number(it, "code"));
+        h.temp_c10 = c10(json::number(it, "temp_c"));
+        h.precip_prob = static_cast<uint8_t>(std::clamp(json::number(it, "precip_prob"), 0.0, 100.0));
         w.hours.push_back(h);
     }
     cJSON_Delete(j);
@@ -251,9 +237,8 @@ void ensure_tile_style() {
     std::vector<uint8_t> body;
     auto r = helper.get(server() + "/v1/status", auth_headers(), body, 4096);
     if (!r.ok()) return;
-    body.push_back(0);
-    cJSON* root = cJSON_Parse(reinterpret_cast<char*>(body.data()));
-    std::string style = root ? str(root, "tile_style") : "";
+    cJSON* root = cJSON_ParseWithLength(reinterpret_cast<const char*>(body.data()), body.size());
+    std::string style{root ? json::string(root, "tile_style") : ""};
     if (root) cJSON_Delete(root);
     storage::set_tile_style(style.empty() ? "1x" : style);  // helpers before tile_style rendered 1x
     style_known.store(true);
@@ -315,16 +300,15 @@ void do_map_data(const Job& j) {
     } else {
         r = helper.get(server() + "/v1/maps/data", auth_headers(), body, 4096);
     }
-    body.push_back(0);
-    cJSON* root = cJSON_Parse(reinterpret_cast<char*>(body.data()));
+    cJSON* root = cJSON_ParseWithLength(reinterpret_cast<const char*>(body.data()), body.size());
     if (!r.ok()) {
         out.status = static_cast<uint8_t>(swp::ErrorCode::Unavailable);
-        out.error = root ? str(root, "error") : "";
+        out.error = root ? json::string(root, "error") : "";
         if (out.error.empty()) out.error = r.error.empty() ? "HTTP " + std::to_string(r.status) : r.error;
     } else if (root) {
-        out.active = str(root, "active");
-        out.building = str(root, "building");
-        out.error = str(root, "last_error");
+        out.active = json::string(root, "active");
+        out.building = json::string(root, "building");
+        out.error = json::string(root, "last_error");
     }
     if (root) cJSON_Delete(root);
     ble_server::send(j.conn, out);
@@ -456,7 +440,7 @@ void pump_transfer() {
     }
 }
 
-void post(const Job& j);
+bool post(const Job& j);
 
 void xfer_task(void*) {
     for (;;) {
@@ -493,20 +477,19 @@ void do_search(const Job& j) {
     std::vector<uint8_t> body;
     auto r = helper.get(url, auth_headers(), body, 32 * 1024);
     if (!r.ok()) return send_error(j.conn, swp::ErrorCode::Unavailable, swp::MsgType::MapSearchRequest, "search failed");
-    body.push_back(0);
-    cJSON* root = cJSON_Parse(reinterpret_cast<char*>(body.data()));
+    cJSON* root = cJSON_ParseWithLength(reinterpret_cast<const char*>(body.data()), body.size());
     swp::MapSearchResults res;
     res.query = j.query;
     const cJSON* it;
     cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(root, "places")) {
         if (res.places.size() >= 12) break;
         swp::Place p;
-        p.name = str(it, "name");
-        p.category = str(it, "category");
-        p.address = str(it, "address");
-        p.lat_e7 = static_cast<int32_t>(std::lround(num(it, "lat") * 1e7));
-        p.lon_e7 = static_cast<int32_t>(std::lround(num(it, "lon") * 1e7));
-        p.distance_m = static_cast<uint32_t>(num(it, "distance_m"));
+        p.name = json::string(it, "name");
+        p.category = json::string(it, "category");
+        p.address = json::string(it, "address");
+        p.lat_e7 = static_cast<int32_t>(std::lround(json::number(it, "lat") * 1e7));
+        p.lon_e7 = static_cast<int32_t>(std::lround(json::number(it, "lon") * 1e7));
+        p.distance_m = static_cast<uint32_t>(json::number(it, "distance_m"));
         res.places.push_back(std::move(p));
     }
     cJSON_Delete(root);
@@ -527,11 +510,10 @@ void do_route(const Job& j) {
         ble_server::send(j.conn, rt);
         return;
     }
-    body.push_back(0);
-    cJSON* root = cJSON_Parse(reinterpret_cast<char*>(body.data()));
-    rt.status = str(root, "status") == "ok" ? 0 : static_cast<uint8_t>(swp::ErrorCode::NotFound);
-    rt.distance_m = static_cast<uint32_t>(num(root, "distance_m"));
-    rt.duration_s = static_cast<uint32_t>(num(root, "duration_s"));
+    cJSON* root = cJSON_ParseWithLength(reinterpret_cast<const char*>(body.data()), body.size());
+    rt.status = json::string(root, "status") == "ok" ? 0 : static_cast<uint8_t>(swp::ErrorCode::NotFound);
+    rt.distance_m = static_cast<uint32_t>(json::number(root, "distance_m"));
+    rt.duration_s = static_cast<uint32_t>(json::number(root, "duration_s"));
     const cJSON* it;
     cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(root, "points")) {
         if (rt.points.size() >= 1000 || !cJSON_IsArray(it) || cJSON_GetArraySize(it) < 2) continue;
@@ -543,9 +525,9 @@ void do_route(const Job& j) {
     cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(root, "steps")) {
         if (rt.steps.size() >= 100) break;
         swp::RouteStep s;
-        s.instruction = str(it, "instruction");
-        s.distance_m = static_cast<uint32_t>(num(it, "distance_m"));
-        s.point_index = static_cast<uint16_t>(num(it, "point_index"));
+        s.instruction = json::string(it, "instruction");
+        s.distance_m = static_cast<uint32_t>(json::number(it, "distance_m"));
+        s.point_index = static_cast<uint16_t>(json::number(it, "point_index"));
         rt.steps.push_back(std::move(s));
     }
     cJSON_Delete(root);
@@ -742,8 +724,7 @@ void worker_task(void*) {
     }
 }
 
-bool post_job(const Job& j) { return xQueueSend(jobs, &j, 0) == pdTRUE; }
-void post(const Job& j) { post_job(j); }
+bool post(const Job& j) { return xQueueSend(jobs, &j, 0) == pdTRUE; }
 
 void on_net(bool online) {
     if (online) {
@@ -759,7 +740,7 @@ void on_net(bool online) {
 void start() {
     jobs = xQueueCreate(16, sizeof(Job));
     net::add_listener(on_net);
-    xTaskCreatePinnedToCore(worker_task, "cloud", 6656, nullptr, 4, &worker, 0);  // ~4.4 KB used (TLS handshake)
+    xTaskCreatePinnedToCore(worker_task, "cloud", 6656, nullptr, 4, nullptr, 0);  // ~4.4 KB used (TLS handshake)
     xTaskCreatePinnedToCore(xfer_task, "xfer", 2560, nullptr, 5, &xfer_task_handle, 0);  // ~0.7 KB used
     xTaskCreatePinnedToCore(prefetch_task, "prefetch", 6144, nullptr, 2, nullptr, 0);
 }
@@ -804,7 +785,7 @@ void request_http(uint16_t conn, swp::HttpRequest&& r) {
     j.kind = JobKind::Http;
     j.conn = conn;
     j.http = new (std::nothrow) swp::HttpRequest(std::move(r));
-    if (j.http && post_job(j)) return;
+    if (j.http && post(j)) return;
     swp::HttpResponse busy;
     busy.id = j.http ? j.http->id : r.id;
     busy.error = "companion busy";
@@ -831,9 +812,7 @@ void ingest_notification(const swp::Notification& n) {
     {
         std::lock_guard<std::mutex> g(mu);
         if (pending.count(n.id) || pending.size() >= 64) return;
-        PendingNotif p;
-        p.n = n;
-        pending[n.id] = p;
+        pending.emplace(n.id, PendingNotif{n});
     }
     Job j = {};
     j.kind = JobKind::Wake;  // deliver from the worker task

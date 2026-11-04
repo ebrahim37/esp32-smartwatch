@@ -49,7 +49,6 @@ uint32_t sample_rate = 8000;
 StreamBufferHandle_t stream = nullptr;
 std::atomic<bool> writing{false}, stop_writer{false};
 std::atomic<bool> slc_up{false};  // hands-free service link open (the headphones may open it themselves)
-std::atomic<uint32_t> bytes_in{0};
 std::string cur_path;
 esp_timer_handle_t timer = nullptr;  // connect timeout / max length
 
@@ -150,7 +149,6 @@ void writer_task(void*) {
 void on_audio_in(const uint8_t* buf, uint32_t len) {
     if (!writing.load() || stop_writer.load()) return;
     xStreamBufferSend(stream, buf, len, 0);
-    bytes_in.fetch_add(len, std::memory_order_relaxed);
 }
 
 // Microphone only: nothing to send to the earpiece.
@@ -166,7 +164,6 @@ void start_writer(uint32_t rate) {
     cur_path = std::string(storage::kMemosDir) + "/" + name + ".wav";
     xStreamBufferReset(stream);
     stop_writer.store(false);
-    bytes_in.store(0);
     writing.store(true);
     if (xTaskCreatePinnedToCore(writer_task, "memo_wr", 3584, nullptr, 5, nullptr, 0) != pdPASS) {
         writing.store(false);

@@ -53,11 +53,10 @@ int32_t pcm_source(uint8_t* buf, int32_t len) {
         size_t avail = ring_used();
         got = want < avail ? want : avail;
         size_t t = r_tail.load(std::memory_order_relaxed);
-        for (size_t i = 0; i < got; ++i) {
-            size_t idx = ((t + i) & (kRingFrames - 1)) * 2;
-            out[2 * i] = ring[idx];
-            out[2 * i + 1] = ring[idx + 1];
-        }
+        size_t idx = t & (kRingFrames - 1);
+        size_t first = std::min(got, kRingFrames - idx);
+        memcpy(out, ring + 2 * idx, first * 4);
+        memcpy(out + 2 * first, ring, (got - first) * 4);
         r_tail.store(t + got, std::memory_order_release);
         played_frames.fetch_add(got, std::memory_order_relaxed);
     }
@@ -89,7 +88,6 @@ int32_t pcm_source(uint8_t* buf, int32_t len) {
 }
 
 // ---- Player state (decoder task) ---------------------------------------------------------
-enum class Op : uint8_t { Command, Remote };
 // FreeRTOS queues copy items bytewise, so the queued command must be plain data (a
 // std::string member would arrive as a dangling pointer and corrupt the heap).
 struct Msg {
@@ -280,11 +278,10 @@ void push_pcm(const uint8_t* pcm, size_t bytes) {
             }
             size_t h = r_head.load(std::memory_order_relaxed);
             size_t k = std::min(n - off, ring_free());
-            for (size_t i = 0; i < k; ++i) {
-                size_t idx = ((h + i) & (kRingFrames - 1)) * 2;
-                ring[idx] = convbuf[2 * (off + i)];
-                ring[idx + 1] = convbuf[2 * (off + i) + 1];
-            }
+            size_t idx = h & (kRingFrames - 1);
+            size_t first = std::min(k, kRingFrames - idx);
+            memcpy(ring + 2 * idx, convbuf + 2 * off, first * 4);
+            memcpy(ring, convbuf + 2 * (off + first), (k - first) * 4);
             r_head.store(h + k, std::memory_order_release);
             off += k;
         }
@@ -389,6 +386,10 @@ void handle(const swp::PlaybackCommand& c) {
             a2dp::start_stream();
             set_state(swp::PlayState::Playing);
             break;
+        case PlaybackCmd::SkipTo:
+            if (c.arg < 1 || c.arg > 4 || order.empty()) break;
+            for (uint32_t k = 1; k < c.arg; ++k) order.next(true);
+            [[fallthrough]];
         case PlaybackCmd::Next:
             if (!advance(true)) {
                 playing.store(false);
@@ -403,18 +404,6 @@ void handle(const swp::PlaybackCommand& c) {
             order.prev(restart);
             if (!open_track(0)) advance(true);
             else if (!restart) order.reshuffle_upcoming(esp_random());
-            publish();
-            break;
-        }
-        case PlaybackCmd::SkipTo: {
-            if (c.arg < 1 || c.arg > 4 || order.empty()) break;
-            for (uint32_t k = 1; k < c.arg; ++k) order.next(true);
-            if (!advance(true)) {
-                playing.store(false);
-                close_track();
-                a2dp::suspend_stream();
-                return set_state(swp::PlayState::Stopped);
-            }
             publish();
             break;
         }

@@ -50,10 +50,6 @@ void apply_route(swp::Route&& r) {
     app::mark(app::kDirtyRoute);
 }
 
-uint32_t own_caps() { return swp::kCapTime | swp::kCapConfig; }
-
-std::string fw_version() { return esp_app_get_description()->version; }
-
 void tx_task(void*) {
     std::vector<uint8_t>* item;
     for (;;) {
@@ -70,8 +66,8 @@ void tx_task(void*) {
 void send_hello() {
     swp::Hello h;
     h.role = static_cast<uint8_t>(swp::Role::Watch);
-    h.capabilities = own_caps();
-    h.firmware = fw_version();
+    h.capabilities = swp::kCapTime | swp::kCapConfig;
+    h.firmware = esp_app_get_description()->version;
     h.device_name = "SW Watch";
     send(h);
 }
@@ -284,7 +280,7 @@ void handle_companion(const swp::Frame& f) {
         case MsgType::WifiStatus:
             if (auto m = swp::decode_message<swp::WifiStatus>(f)) {
                 app::Locked s;
-                s->wifi = *m;
+                s->wifi = std::move(*m);
                 s->wifi_valid = true;
                 app::mark(app::kDirtyWifi);
             }
@@ -315,14 +311,14 @@ void handle_companion(const swp::Frame& f) {
         case MsgType::AudioStatus:
             if (auto m = swp::decode_message<swp::AudioStatus>(f)) {
                 app::Locked s;
-                s->audio = *m;
+                s->audio = std::move(*m);
                 app::mark(app::kDirtyAudio);
             }
             break;
         case MsgType::CompanionStatus:
             if (auto m = swp::decode_message<swp::CompanionStatus>(f)) {
                 app::Locked s;
-                s->companion = *m;
+                s->companion = std::move(*m);
                 s->companion_valid = true;
                 s->companion_rx_us = esp_timer_get_time();
                 app::mark(app::kDirtyCompanion);

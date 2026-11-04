@@ -19,7 +19,7 @@ constexpr const char* kMusicDir = "/sdcard/music";
 constexpr const char* kMusicTmpDir = "/sdcard/music/.tmp";
 constexpr const char* kMapsDir = "/sdcard/maps";
 
-constexpr const char* kMemosDir = "/sdcard/memos";  // TODO(PROTOTYPE): voice memos deferred
+constexpr const char* kMemosDir = "/sdcard/memos";
 
 struct Info {
     swp::SdState state = swp::SdState::Absent;
@@ -35,7 +35,7 @@ void start();
 Info info();
 bool mounted();
 
-// ---- Music quota (2 GB) -----------------------------------------------------------
+// ---- Music quota (3 GiB) ---------------------------------------------------------
 bool music_reserve(uint64_t bytes);  // admission check before a download
 void music_add(int64_t delta);       // account completed/removed files
 void music_set_used(uint64_t bytes);

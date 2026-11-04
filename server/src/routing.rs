@@ -1,5 +1,5 @@
 //! Directions via OSRM (self-hosted recommended). The route is simplified server-side to
-//! at most 200 points and turned into short, watch-sized instructions.
+//! at most 1000 points and turned into short, watch-sized instructions.
 
 use serde::Serialize;
 use serde_json::Value;
@@ -111,25 +111,23 @@ pub fn parse_osrm(body: &Value) -> AppResult<Route> {
         simplified
             .iter()
             .enumerate()
-            .min_by(|a, b| haversine_m(lat, lon, a.1 .0, a.1 .1).total_cmp(&haversine_m(lat, lon, b.1 .0, b.1 .1)))
+            .map(|(i, p)| (i, haversine_m(lat, lon, p.0, p.1)))
+            .min_by(|a, b| a.1.total_cmp(&b.1))
             .map(|(i, _)| i)
             .unwrap_or(0)
     };
     let mut steps = Vec::new();
-    for leg in r.get("legs").and_then(|l| l.as_array()).into_iter().flatten() {
-        for st in leg.get("steps").and_then(|s| s.as_array()).into_iter().flatten() {
-            let m = &st["maneuver"];
-            let name = st.get("name").and_then(|n| n.as_str()).unwrap_or("");
-            let loc = m.get("location").and_then(|l| l.as_array());
-            let (lon, lat) = (loc.and_then(|l| l.first()?.as_f64()).unwrap_or(0.0), loc.and_then(|l| l.get(1)?.as_f64()).unwrap_or(0.0));
-            steps.push(Step {
-                instruction: instruction(m, name),
-                distance_m: st.get("distance").and_then(|d| d.as_f64()).unwrap_or(0.0).round() as u32,
-                point_index: nearest(lat, lon),
-            });
-        }
+    for st in r["legs"].as_array().into_iter().flatten().flat_map(|leg| leg["steps"].as_array().into_iter().flatten()).take(MAX_STEPS) {
+        let m = &st["maneuver"];
+        let name = st.get("name").and_then(|n| n.as_str()).unwrap_or("");
+        let loc = m.get("location").and_then(|l| l.as_array());
+        let (lon, lat) = (loc.and_then(|l| l.first()?.as_f64()).unwrap_or(0.0), loc.and_then(|l| l.get(1)?.as_f64()).unwrap_or(0.0));
+        steps.push(Step {
+            instruction: instruction(m, name),
+            distance_m: st.get("distance").and_then(|d| d.as_f64()).unwrap_or(0.0).round() as u32,
+            point_index: nearest(lat, lon),
+        });
     }
-    steps.truncate(MAX_STEPS);
     Ok(Route {
         status: "ok",
         distance_m: r.get("distance").and_then(|d| d.as_f64()).unwrap_or(0.0).round() as u32,
@@ -221,6 +219,19 @@ mod tests {
     fn no_route() {
         let r = parse_osrm(&json!({"code":"NoRoute"})).unwrap();
         assert_eq!(r.status, "not_found");
+    }
+
+    #[test]
+    fn keeps_first_steps_across_legs_and_first_equal_nearest_point() {
+        let step = |i| json!({"name": format!("Street {i}"), "maneuver": {"type": "depart", "location": [0.0, 0.0]}});
+        let body = json!({"code": "Ok", "routes": [{
+            "geometry": {"coordinates": [[0.0, 0.0], [0.0, 0.0]]},
+            "legs": [{"steps": (0..60).map(step).collect::<Vec<_>>()}, {"steps": (60..130).map(step).collect::<Vec<_>>()}]
+        }]});
+        let r = parse_osrm(&body).unwrap();
+        assert_eq!(r.steps.len(), MAX_STEPS);
+        assert_eq!(r.steps[99].instruction, "Head along Street 99");
+        assert!(r.steps.iter().all(|s| s.point_index == 0));
     }
 
     #[test]

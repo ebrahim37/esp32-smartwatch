@@ -20,6 +20,7 @@ target_compile_options(swp PRIVATE -Wall -Wextra -Werror)
 
 if(NOT SWP_NO_TESTS)
     enable_testing()
+    target_compile_options(swp PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
     add_executable(swp_tests test/test_protocol.cpp)
     target_link_libraries(swp_tests PRIVATE swp)
     target_compile_options(swp_tests PRIVATE -Wall -Wextra -fsanitize=address,undefined)

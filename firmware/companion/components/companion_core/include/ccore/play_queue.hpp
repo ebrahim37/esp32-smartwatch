@@ -37,7 +37,6 @@ private:
     size_t pos_ = 0;
     bool shuffle_ = false;
     Repeat repeat_ = Repeat::Off;
-    bool restart_ = false;
 };
 
 }  // namespace ccore

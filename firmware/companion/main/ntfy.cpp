@@ -5,7 +5,7 @@
 #include <ctime>
 #include <mutex>
 
-#include "cJSON.h"
+#include "json.hpp"
 #include "ccore/backoff.hpp"
 #include "ccore/ntfy.hpp"
 #include "cloud.hpp"
@@ -55,17 +55,12 @@ void save_cursor(const std::string& c) {
     nvs_close(h);
 }
 
-std::string str(const cJSON* o, const char* k) {
-    const cJSON* v = cJSON_GetObjectItemCaseSensitive(o, k);
-    return cJSON_IsString(v) && v->valuestring ? v->valuestring : "";
-}
-
 void on_line(std::string_view line) {
     cJSON* j = cJSON_ParseWithLength(line.data(), line.size());
     if (!j) return;
     last_event.store(static_cast<uint32_t>(time(nullptr)));
-    std::string event = str(j, "event");
-    std::string id = str(j, "id");
+    auto event = json::string(j, "event");
+    std::string id{json::string(j, "id")};
     if (event == "message" && !id.empty() && id.size() < 64) {
         bool fresh;
         {
@@ -79,9 +74,9 @@ void on_line(std::string_view line) {
             n.timestamp = cJSON_IsNumber(t) ? static_cast<uint32_t>(t->valuedouble) : static_cast<uint32_t>(time(nullptr));
             const cJSON* p = cJSON_GetObjectItemCaseSensitive(j, "priority");
             n.priority = static_cast<uint8_t>(cJSON_IsNumber(p) && p->valueint >= 1 && p->valueint <= 5 ? p->valueint : 3);
-            n.topic = str(j, "topic").substr(0, 64);
-            n.title = str(j, "title").substr(0, 128);
-            n.body = str(j, "message").substr(0, 1024);
+            n.topic = json::string(j, "topic").substr(0, 64);
+            n.title = json::string(j, "title").substr(0, 128);
+            n.body = json::string(j, "message").substr(0, 1024);
             ESP_LOGI(TAG, "message %s on %s", id.c_str(), n.topic.c_str());
             cloud::ingest_notification(n);
         }

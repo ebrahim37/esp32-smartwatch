@@ -120,7 +120,6 @@ class PasscodeScreen : public Screen {
 public:
     const char* title() const override { return "Passcode"; }
     void build(lv_obj_t* c) override {
-        c_ = c;
         lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
         lv_obj_set_style_pad_all(c, 12, 0);
         lv_obj_set_style_pad_row(c, 10, 0);
@@ -132,17 +131,17 @@ public:
 
 private:
     void rebuild() {
-        clear(c_);
+        clear(content);
         bool has = !settings::lock_pin().empty();
         if (!has) {
-            section_header(c_, "Set a 4-digit passcode, then lock the watch from the Lock app. The lock stays on after a restart.");
-            list_row(c_, "Set passcode", nullptr, nullptr, [] { choose_passcode(nullptr); }, color::blue(), UI_SYMBOL_LOCK);
+            section_header(content, "Set a 4-digit passcode, then lock the watch from the Lock app. The lock stays on after a restart.");
+            list_row(content, "Set passcode", nullptr, nullptr, [] { choose_passcode(nullptr); }, color::blue(), UI_SYMBOL_LOCK);
             return;
         }
-        section_header(c_, "Lock the watch from the Lock app.");
-        list_row(c_, "Change passcode", nullptr, nullptr, [] { verify_passcode("Current passcode", [] { choose_passcode(nullptr); }); },
+        section_header(content, "Lock the watch from the Lock app.");
+        list_row(content, "Change passcode", nullptr, nullptr, [] { verify_passcode("Current passcode", [] { choose_passcode(nullptr); }); },
                  color::card2(), LV_SYMBOL_EDIT);
-        list_row(c_, "Turn passcode off", nullptr, nullptr, [this] {
+        list_row(content, "Turn passcode off", nullptr, nullptr, [this] {
             verify_passcode("Current passcode", [this] {
                 settings::set_lock_pin("");
                 settings::set_locked(false);
@@ -151,7 +150,6 @@ private:
             });
         }, color::red(), LV_SYMBOL_CLOSE);
     }
-    lv_obj_t* c_ = nullptr;
 };
 
 }  // namespace

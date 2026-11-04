@@ -168,20 +168,28 @@ fn default_zmax() -> u8 {
 const MAX_BUNDLE_TILES: usize = 4000;
 
 /// Tiles covering a circle's bounding box, coarse zooms first.
-fn bundle_tiles(q: &BundleQ) -> Vec<(u8, u32, u32)> {
+fn bundle_tiles(q: &BundleQ) -> AppResult<Vec<(u8, u32, u32)>> {
     let dlat = q.radius_m / 110_574.0;
     let dlon = q.radius_m / (111_320.0 * q.lat.to_radians().cos().max(0.05));
     let mut out = Vec::new();
+    let mut count = 0;
     for z in q.zmin..=q.zmax {
         let (x0, y0) = geo::tile_at(q.lat + dlat, q.lon - dlon, z);
         let (x1, y1) = geo::tile_at(q.lat - dlat, q.lon + dlon, z);
+        count += (x1 - x0 + 1) as usize * (y1 - y0 + 1) as usize;
+        if count > MAX_BUNDLE_TILES {
+            continue; // count the whole request, but only allocate up to the limit
+        }
         for y in y0..=y1 {
             for x in x0..=x1 {
                 out.push((z, x, y));
             }
         }
     }
-    out
+    if count > MAX_BUNDLE_TILES {
+        return Err(AppError::BadRequest(format!("{count} tiles requested; reduce radius or zmax")));
+    }
+    Ok(out)
 }
 
 /// Streams many SWT tiles in one response so the companion can fill its SD cache without
@@ -203,10 +211,7 @@ async fn bundle(State(st): State<AppState>, Query(q): Query<BundleQ>) -> AppResu
         }
         None => "default".into(),
     };
-    let list = bundle_tiles(&q);
-    if list.len() > MAX_BUNDLE_TILES {
-        return Err(AppError::BadRequest(format!("{} tiles requested; reduce radius or zmax", list.len())));
-    }
+    let list = bundle_tiles(&q)?;
     let tiles = st.tiles.clone();
     // Uncached tiles cost a render each; a few in parallel (order kept) on a multi-core host.
     let records = futures_util::stream::iter(list)
@@ -269,7 +274,7 @@ async fn search(State(st): State<AppState>, Query(q): Query<SearchQ>) -> AppResu
     // The active area's local index answers in milliseconds; Photon/Overpass cover the rest.
     let local = st.mapdata.as_ref().filter(|md| md.covers(q.lat, q.lon)).and_then(|md| md.pois());
     let nearby = q.q.trim().is_empty();
-    let fallback = if nearby { local.is_none() } else { true };
+    let fallback = !nearby || local.is_none();
     let mut places = local.map(|idx| idx.search(&q.q, q.lat, q.lon, limit)).unwrap_or_default();
     // The local index is authoritative for "Nearby"; public Overpass is slow and often busy.
     if fallback && places.len() < 3 {

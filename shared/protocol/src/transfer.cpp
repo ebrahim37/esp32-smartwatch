@@ -71,6 +71,7 @@ TransferAck TransferReceiver::make_ack(TransferAckStatus status) const {
 }
 
 TransferReceiver::Event TransferReceiver::on_begin(const TransferBegin& b, TransferAck& ack) {
+    bool same_kind = kind_ == b.kind;
     kind_ = b.kind;  // valid for the caller even when this begin is rejected
     if (b.total_size > max_size_) {
         active_ = false;
@@ -79,7 +80,7 @@ TransferReceiver::Event TransferReceiver::on_begin(const TransferBegin& b, Trans
         ack.window = 0;
         return Event::Failed;
     }
-    bool resumable = active_ && b.total_size == total_ && b.crc32 == crc_ && b.start_offset <= next_ && b.meta == meta_;
+    bool resumable = active_ && same_kind && b.total_size == total_ && b.crc32 == crc_ && b.start_offset <= next_ && b.meta == meta_;
     if (!resumable) {
         buf_.clear();
         buf_.reserve(b.total_size);
@@ -107,7 +108,7 @@ TransferReceiver::Event TransferReceiver::on_chunk(const TransferChunk& c, Trans
     if (c.offset != next_ || c.data.empty() || next_ + c.data.size() > total_) {
         // Gap or oversized chunk: ask the sender to rewind. Duplicates are dropped silently.
         ack = make_ack(TransferAckStatus::Rewind);
-        send_ack = c.offset > next_ || c.offset == next_;
+        send_ack = c.offset >= next_;
         return Event::None;
     }
     buf_.insert(buf_.end(), c.data.begin(), c.data.end());
