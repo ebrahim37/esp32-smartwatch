@@ -28,7 +28,7 @@ through it in order and note the results in `agent/firmware/progress.md`.
 - [ ] Settings → Vibration toggle buzzes the motor (GPIO18).
 
 ## 3. Pairing and reconnection
-- [ ] Companion unpaired (or within 5 min of boot): Watch Settings → Connections → Companion → Find & pair → select → keyboard asks for passkey → enter `616616` → Status `Connected`.
+- [ ] Companion unpaired (or within 5 min of boot): Watch Settings → Companion → Find & pair → select → keyboard asks for passkey → enter `616616` → Status `Connected`.
 - [ ] Wrong passkey fails; no bond stored.
 - [ ] Once paired and 5 min after boot, another device cannot pair (`pairing rejected: already paired`).
 - [ ] Watch Forget → companion logs `unpaired on request of the watch`; pairing works again without a reboot.
@@ -63,7 +63,7 @@ through it in order and note the results in `agent/firmware/progress.md`.
 - [ ] Now Playing: progress and volume sliders stay where released (no snap back); elapsed and remaining tick at different moments; Up next shows the next 4 (new random picks after each switch when shuffled), tap one to skip there; drag down at the top dismisses.
 - [ ] Internal RAM stays healthy with a large library (`main: heap: internal … (min …)`, no `ALLOC FAIL`).
 - [ ] Sync downloads each track transcoded to 128 kbps MP3 (`stream?format=mp3`) into `/sdcard/music` (`navidrome: track … KB in … ms`); interrupt Wi-Fi mid-file → that track starts over later; older originals of the same tracks are deleted once replaced; removing a song from the playlist deletes it on the next sync.
-- [ ] Watch Connections → AirPods → Search (AirPods in pairing mode, case button held) → select → `Connected`.
+- [ ] Watch Settings → Companion → AirPods → Search (AirPods in pairing mode, case button held) → select → `Connected`.
 - [ ] AirPods in use by the iPhone: companion never takes them on its own (not at boot, not after the phone takes them back). Play on the watch → companion connects (`connecting to … for playback`); pause 1 min → `releasing …`, AirPods free for the phone.
 - [ ] Play an MP3, a FLAC (16- and 24-bit) and an M4A (AAC and ALAC) track: audio is clean, no dropouts for 10 min with BLE connected and Wi-Fi up.
 - [ ] Mini player, full player (`m:ss / -m:ss`), shuffle, repeat off/all/one, next/prev, drag-down dismiss.
@@ -91,7 +91,7 @@ through it in order and note the results in `agent/firmware/progress.md`.
 
 ## 5d. Home screen
 
-- [ ] Tap LINK / NET: opens Settings → Connections; Back returns to Settings.
+- [ ] Tap LINK / NET: opens Settings → Phone or Companion, whichever was connected last (also after a reboot); Back returns to Settings.
 
 ## 5c. Compass
 

@@ -157,7 +157,10 @@ void MusicScreen::rebuild() {
     }
     if (!ready) {
         section_header(list_, "Companion not connected");
-        list_row(list_, "Connections", "Pair or reconnect the companion", nullptr, [] { push(make_settings()); }, color::blue(), LV_SYMBOL_BLUETOOTH);
+        list_row(list_, "Connection", "Pair or reconnect", nullptr, [] {
+            push(make_settings());
+            push(make_link_settings());
+        }, color::blue(), LV_SYMBOL_BLUETOOTH);
         return;
     }
     // Search | Shuffle all, equal halves.

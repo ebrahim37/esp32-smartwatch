@@ -72,7 +72,7 @@ public:
         };
         status(kLinkSym, kSplit + 20, "LINK", 54, link_icon_, link_txt_);
         status(LV_SYMBOL_WIFI, kSplit + 18, "NET", 98, net_icon_, net_txt_);  // wider glyph: optically aligned
-        // LINK / NET opens Settings -> Connections.
+        // LINK / NET opens Settings -> Phone or Companion.
         lv_obj_t* conn = lv_obj_create(face_);
         lv_obj_remove_style_all(conn);
         lv_obj_set_size(conn, kContentR - kSplit + 12, 120);
@@ -80,7 +80,7 @@ public:
         lv_obj_add_flag(conn, LV_OBJ_FLAG_CLICKABLE);
         on_click(conn, [] {
             push(make_settings());
-            push(make_connections());
+            push(make_link_settings());
         });
         divs_.push_back(vdiv(40, 102));
         divs_.push_back(hdiv(150));
@@ -198,7 +198,8 @@ public:
         update_status();  // NET goes grey 90 s after the last internet exchange
     }
 
-    // Dimmed (inactive): date, time, weather icon + temperature, precipitation if coming, battery.
+    // Dimmed (inactive): date, time, weather icon + temperature, precipitation if coming, battery,
+    // and LINK / NET only while not green.
     void on_dim(bool dimmed) override {
         auto show = [dimmed](lv_obj_t* o) {
             if (dimmed) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
@@ -206,7 +207,9 @@ public:
         };
         for (lv_obj_t* o : divs_) show(o);
         for (lv_obj_t* o : buttons_) show(o);
-        for (lv_obj_t* o : {link_icon_, link_txt_, net_icon_, net_txt_, steps_}) show(o);
+        show(steps_);
+        dimmed_ = dimmed;
+        update_status();
         weather_row_compact(wx_, dimmed);
     }
 
@@ -249,7 +252,7 @@ private:
         {
             app::Locked s;
             up = s->link.state == app::LinkState::Ready;
-            peer = s->link.has_peer;
+            peer = s->link.has_peer || s->link.phone_paired;
             // Last successful internet exchange through the companion, aged to now.
             int64_t age = s->companion_valid && s->companion.internet_age_s != UINT32_MAX
                               ? s->companion.internet_age_s + (esp_timer_get_time() - s->companion_rx_us) / 1000000
@@ -260,6 +263,14 @@ private:
         lv_obj_set_style_text_color(link_txt_, up ? color::text() : color::muted(), 0);
         lv_obj_set_style_text_color(net_icon_, net ? color::green() : color::muted(), 0);
         lv_obj_set_style_text_color(net_txt_, net ? color::text() : color::muted(), 0);
+        auto show = [](lv_obj_t* o, bool visible) {
+            if (visible) lv_obj_remove_flag(o, LV_OBJ_FLAG_HIDDEN);
+            else lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+        };
+        show(link_icon_, !dimmed_ || !up);
+        show(link_txt_, !dimmed_ || !up);
+        show(net_icon_, !dimmed_ || !net);
+        show(net_txt_, !dimmed_ || !net);
     }
 
     lv_obj_t *face_ = nullptr, *date_ = nullptr, *time_ = nullptr, *wx_ = nullptr, *notifs_ = nullptr;
@@ -268,6 +279,7 @@ private:
     lv_obj_t *bat_box_ = nullptr, *bat_fill_ = nullptr, *bat_ = nullptr;
     std::vector<lv_obj_t*> divs_, buttons_;
     uint32_t ticks_ = 0;
+    bool dimmed_ = false;
 };
 
 }  // namespace

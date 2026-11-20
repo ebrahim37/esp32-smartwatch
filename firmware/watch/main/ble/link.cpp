@@ -25,11 +25,14 @@ constexpr const char* TAG = "link";
 constexpr int kTxQueueLen = 48;
 constexpr int64_t kHeartbeatUs = 20LL * 1000000;
 constexpr int64_t kPeerSilentUs = 75LL * 1000000;  // > 3 missed heartbeats: drop and reconnect
+constexpr int64_t kHelloRetryUs = 2LL * 1000000;
+constexpr int64_t kHandshakeTimeoutUs = 30LL * 1000000;
 
 
 QueueHandle_t txq = nullptr;
 std::atomic<uint16_t> seq{1};
 std::atomic<bool> is_ready{false};
+std::atomic<int64_t> handshake_since_us{0};  // 0: no handshake in progress
 std::atomic<int64_t> last_rx_us{0};
 
 // Decoders and the transfer receiver are only touched from the NimBLE host task.
@@ -58,7 +61,7 @@ void tx_task(void*) {
         bool ok = true;
         size_t chunk = central::mtu() > 3 ? central::mtu() - 3 : 20;
         for (size_t off = 0; ok && off < f.size(); off += chunk) ok = central::write(f.data() + off, std::min(chunk, f.size() - off));
-        if (!ok) ESP_LOGD(TAG, "tx dropped (%u bytes)", (unsigned)f.size());
+        if (!ok) ESP_LOGW(TAG, "tx dropped (%u bytes)", (unsigned)f.size());
         delete item;
     }
 }
@@ -158,6 +161,7 @@ void handle_companion(const swp::Frame& f) {
     switch (static_cast<MsgType>(f.type)) {
         case MsgType::HelloAck:
             if (auto m = swp::decode_message<swp::HelloAck>(f)) {
+                handshake_since_us.store(0);
                 is_ready.store(true);
                 {
                     app::Locked s;
@@ -358,6 +362,21 @@ void handle_companion(const swp::Frame& f) {
     }
 }
 
+// A bonded phone's subscription is restored with the encryption, before its app has subscribed
+// again, and iOS drops a Hello sent then. So Hello repeats until answered.
+void hello_cb(void*) {
+    int64_t since = handshake_since_us.load();
+    if (since == 0 || !central::connected()) return;
+    if (esp_timer_get_time() - since > kHandshakeTimeoutUs) {
+        ESP_LOGW(TAG, "no answer to hello; dropping link");
+        handshake_since_us.store(0);
+        central::drop_link();
+        return;
+    }
+    ESP_LOGI(TAG, "hello again");
+    send_hello();
+}
+
 void health_cb(void*) {
     if (!is_ready.load()) return;
     int64_t now = esp_timer_get_time();
@@ -382,6 +401,10 @@ void init() {
     esp_timer_handle_t t;
     esp_timer_create(&a, &t);
     esp_timer_start_periodic(t, kHeartbeatUs);
+    a.callback = hello_cb;
+    a.name = "link_hello";
+    esp_timer_create(&a, &t);
+    esp_timer_start_periodic(t, kHelloRetryUs);
     fetch::init();
 }
 
@@ -409,12 +432,15 @@ void on_companion_ready() {
     {
         app::Locked s;
         s->link.state = app::LinkState::Handshake;
+        s->link.last_error.clear();
     }
     app::mark(app::kDirtyLink);
+    handshake_since_us.store(esp_timer_get_time());
     send_hello();
 }
 
 void on_companion_down() {
+    handshake_since_us.store(0);
     is_ready.store(false);
     dec_companion.reset();
     tile_rx.reset();

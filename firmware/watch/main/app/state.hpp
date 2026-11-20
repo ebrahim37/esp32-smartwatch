@@ -70,6 +70,8 @@ struct LinkInfo {
     uint32_t peer_caps = 0;
     std::string last_error;
     bool peer_audio_active = false;  // companion is streaming A2DP: avoid bulk requests
+    bool phone_paired = false;       // a phone (not the companion) has a bond here
+    bool phone_connected = false;    // the link is to the phone (the watch is the BLE peripheral)
 };
 
 struct ScanEntry {
@@ -79,7 +81,7 @@ struct ScanEntry {
     int8_t rssi = 0;
 };
 
-enum class PasskeyMode : uint8_t { None, EnterForCompanion };
+enum class PasskeyMode : uint8_t { None, EnterForCompanion, ShowForPhone };
 
 struct Alert {
     enum Kind : uint8_t { Timer, Alarm, Notification, Info } kind = Info;
@@ -94,6 +96,7 @@ struct State {
     bool scanning = false;
 
     PasskeyMode passkey_mode = PasskeyMode::None;
+    uint32_t passkey_shown = 0;  // ShowForPhone: the code to type on the phone
 
     bool weather_valid = false;
     swp::Weather weather;

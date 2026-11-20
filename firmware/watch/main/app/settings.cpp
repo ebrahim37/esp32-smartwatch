@@ -85,6 +85,14 @@ bool dnd() {
 
 void set_dnd(bool on) { set_blob("dnd", {static_cast<uint8_t>(on ? 1 : 0)}); }
 
+bool last_link_phone() {
+    auto b = blob("link_phone");
+    return b.size() != 1 || b[0];
+}
+void set_last_link_phone(bool phone) {
+    if (last_link_phone() != phone) set_blob("link_phone", {static_cast<uint8_t>(phone ? 1 : 0)});
+}
+
 std::string lock_pin() {
     auto b = blob("lock_pin");
     return std::string(b.begin(), b.end());

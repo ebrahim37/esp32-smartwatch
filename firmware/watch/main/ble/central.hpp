@@ -1,4 +1,7 @@
-// NimBLE central role: discovery, bonding and automatic reconnection to the companion.
+// Bluetooth link to whichever provider is around, through NimBLE:
+//   * central role: discovery, bonding and automatic reconnection to the ESP32 companion;
+//   * peripheral role: advertises kWatchServiceUuid128 for the iOS app, which connects as central.
+// One link at a time; a phone connecting takes over from the companion.
 #pragma once
 
 #include <cstddef>
@@ -20,6 +23,7 @@ void pair(const uint8_t addr[6], uint8_t addr_type, const char* name);
 void disconnect();   // stays disconnected until reconnect()
 void reconnect();
 void forget();
+void forget_phone();  // drops the phone link and its bond
 void submit_passkey(uint32_t passkey);
 void cancel_passkey();
 void drop_link();    // transient drop (health check); auto-reconnect continues

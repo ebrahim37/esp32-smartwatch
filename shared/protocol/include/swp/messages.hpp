@@ -33,6 +33,12 @@ constexpr uint8_t kTxCharUuid128[16] = {0xe0, 0x0d, 0x7c, 0x5a, 0x1e, 0x6b, 0x2a
 constexpr uint8_t kInfoCharUuid128[16] = {0xe0, 0x0d, 0x7c, 0x5a, 0x1e, 0x6b, 0x2a, 0x9d,
                                           0x8e, 0x4f, 0x3b, 0x5c, 0x04, 0x00, 0x1e, 0x7a};
 
+// The iOS app can't be a BLE peripheral in the background, so with a phone the GATT roles swap: the
+// watch is the peripheral (this service, same characteristics) and the phone the central. Frames
+// stay the same; the watch's go out as TX notifications, the phone's arrive as RX writes.
+constexpr uint8_t kWatchServiceUuid128[16] = {0xe0, 0x0d, 0x7c, 0x5a, 0x1e, 0x6b, 0x2a, 0x9d,
+                                              0x8e, 0x4f, 0x3b, 0x5c, 0x10, 0x00, 0x1e, 0x7a};  // 7a1e0010-...
+
 enum class MsgType : uint8_t {
     Hello = 0x01,
     HelloAck = 0x02,

@@ -151,7 +151,7 @@ Screen* make_alarms();
 Screen* make_calendar();
 Screen* make_notifications();
 Screen* make_settings();
-Screen* make_connections();  // Settings -> Connections
+Screen* make_link_settings();  // Settings -> Phone or Companion, whichever was connected last
 Screen* make_voice_memos();
 Screen* make_activity();
 Screen* make_compass();

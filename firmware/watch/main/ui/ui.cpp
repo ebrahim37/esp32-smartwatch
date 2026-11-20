@@ -154,13 +154,33 @@ void show_next_alert() {
 }
 
 void update_passkey_overlay() {
+    static lv_obj_t* phone_code = nullptr;
     app::PasskeyMode mode;
+    uint32_t code;
     {
         app::Locked s;
         mode = s->passkey_mode;
+        code = s->passkey_shown;
     }
     if (mode == shown_passkey) return;
     shown_passkey = mode;
+    if (phone_code) {
+        lv_obj_delete(phone_code);
+        phone_code = nullptr;
+    }
+    if (mode == app::PasskeyMode::ShowForPhone) {
+        phone_code = lv_obj_create(lv_layer_top());
+        lv_obj_remove_style_all(phone_code);
+        lv_obj_set_size(phone_code, LV_PCT(100), LV_PCT(100));
+        lv_obj_set_style_bg_color(phone_code, color::bg(), 0);
+        lv_obj_set_style_bg_opa(phone_code, LV_OPA_COVER, 0);
+        lv_obj_align(label(phone_code, "Pair with iPhone", &font_inter_24), LV_ALIGN_TOP_MID, 0, 130);
+        char digits[8];
+        snprintf(digits, sizeof digits, "%06lu", static_cast<unsigned long>(code));
+        lv_obj_align(label(phone_code, digits, &font_digits_64), LV_ALIGN_TOP_MID, 0, 190);
+        lv_obj_align(label(phone_code, "Type this code on the phone", &font_inter_20, color::muted()), LV_ALIGN_TOP_MID, 0, 280);
+        return;
+    }
     if (mode == app::PasskeyMode::EnterForCompanion) {
         KeyboardOpts o;
         o.label = "Companion passkey";

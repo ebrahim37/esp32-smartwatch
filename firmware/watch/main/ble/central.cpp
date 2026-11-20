@@ -7,7 +7,9 @@
 #include "app/settings.hpp"
 #include "app/state.hpp"
 #include "ble/link.hpp"
+#include "esp_app_desc.h"
 #include "esp_log.h"
+#include "esp_mac.h"
 #include "esp_random.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -16,6 +18,8 @@
 #include "host/util/util.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
+#include "services/gap/ble_svc_gap.h"
+#include "services/gatt/ble_svc_gatt.h"
 #include "swp/messages.hpp"
 
 extern "C" void ble_store_config_init(void);
@@ -30,7 +34,7 @@ constexpr uint32_t kBackoffS[] = {2, 5, 10, 20, 40, 60, 120, 300};
 constexpr int32_t kConnectTimeoutMs = 8000;
 constexpr int32_t kScanMs = 12000;
 
-enum class Cmd : uint8_t { Scan, StopScan, Pair, Disconnect, Reconnect, Forget, Passkey, CancelPasskey, Drop, Evaluate };
+enum class Cmd : uint8_t { Scan, StopScan, Pair, Disconnect, Reconnect, Forget, ForgetPhone, Passkey, CancelPasskey, Drop, Evaluate };
 struct Command {
     Cmd cmd;
     uint8_t addr[6];
@@ -47,13 +51,20 @@ std::atomic<uint16_t> conn{BLE_HS_CONN_HANDLE_NONE};
 std::atomic<uint16_t> cur_mtu{23};
 std::atomic<bool> fast_wanted{false};
 
+// Phone link (the watch is the peripheral). `phone_ready`: encrypted, authenticated, subscribed.
+std::atomic<uint16_t> phone_conn{BLE_HS_CONN_HANDLE_NONE};
+std::atomic<bool> phone_ready{false};
+bool phone_encrypted = false, phone_subscribed = false;
+uint16_t phone_tx_handle = 0;
+
 // Idle: 30-50 ms with peripheral latency (low power). Fast (Maps open): 15-20 ms, no latency,
-// for tile transfers.
+// for tile transfers. iOS only accepts a max interval at least 15 ms above the min.
 void apply_conn_params(uint16_t h) {
     bool fast = fast_wanted.load();
+    bool phone = h == phone_conn.load();
     struct ble_gap_upd_params p = {};
     p.itvl_min = fast ? 12 : 24;
-    p.itvl_max = fast ? 16 : 40;
+    p.itvl_max = phone ? (fast ? 24 : 48) : (fast ? 16 : 40);
     p.latency = fast ? 0 : 4;
     p.supervision_timeout = 400;
     int rc = ble_gap_update_params(h, &p);
@@ -126,6 +137,8 @@ void schedule_retry() {
 void try_connect() {
     attempt_pending = false;
     if (!synced.load() || !peer.valid || user_disconnected || conn.load() != BLE_HS_CONN_HANDLE_NONE) return;
+    if (phone_conn.load() != BLE_HS_CONN_HANDLE_NONE) return;  // the phone link has priority
+    ble_hs_cfg.sm_io_cap = BLE_HS_IO_KEYBOARD_DISPLAY;  // we type the companion's passkey
     if (ble_gap_disc_active()) ble_gap_disc_cancel();
     ble_addr_t a = peer_addr();
     struct ble_gap_conn_params p = {};
@@ -161,6 +174,7 @@ int on_cccd_written(uint16_t conn_handle, const struct ble_gatt_error* err, stru
         s->link.has_peer = true;
     }
     attempt = 0;
+    settings::set_last_link_phone(false);
     swlink::on_companion_ready();
     return 0;
 }
@@ -295,8 +309,8 @@ int gap_event(struct ble_gap_event* ev, void*) {
         case BLE_GAP_EVENT_DISCONNECT:
             ESP_LOGI(TAG, "disconnected: reason 0x%x", ev->disconnect.reason);
             conn.store(BLE_HS_CONN_HANDLE_NONE);
-            cur_mtu.store(23);
-            swlink::on_companion_down();
+            if (phone_conn.load() == BLE_HS_CONN_HANDLE_NONE) cur_mtu.store(23);
+            if (!phone_ready.load()) swlink::on_companion_down();  // else the phone already took over
             {
                 app::Locked s;
                 s->passkey_mode = app::PasskeyMode::None;
@@ -365,10 +379,222 @@ int gap_event(struct ble_gap_event* ev, void*) {
     }
 }
 
+// ---- Peripheral role: the iOS app ----------------------------------------------------
+
+const ble_uuid128_t kWatchSvcUuid = make_uuid(swp::kWatchServiceUuid128);
+const ble_uuid128_t kInfoUuid = make_uuid(swp::kInfoCharUuid128);
+
+int phone_gap_event(struct ble_gap_event* ev, void* arg);
+
+void start_advertising() {
+    if (!synced.load() || phone_conn.load() != BLE_HS_CONN_HANDLE_NONE || ble_gap_adv_active()) return;
+    struct ble_hs_adv_fields f = {};
+    f.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
+    f.uuids128 = &kWatchSvcUuid;
+    f.num_uuids128 = 1;
+    f.uuids128_is_complete = 1;
+    int rc = ble_gap_adv_set_fields(&f);
+    if (rc == 0) {
+        struct ble_hs_adv_fields r = {};
+        const char* name = ble_svc_gap_device_name();
+        r.name = reinterpret_cast<const uint8_t*>(name);
+        r.name_len = static_cast<uint8_t>(strlen(name));
+        r.name_is_complete = 1;
+        rc = ble_gap_adv_rsp_set_fields(&r);
+    }
+    struct ble_gap_adv_params p = {};
+    p.conn_mode = BLE_GAP_CONN_MODE_UND;
+    p.disc_mode = BLE_GAP_DISC_MODE_GEN;
+    p.itvl_min = 0x140;  // 200-400 ms: reconnects within seconds without constant radio use
+    p.itvl_max = 0x280;
+    if (rc == 0) rc = ble_gap_adv_start(own_addr_type, nullptr, BLE_HS_FOREVER, &p, phone_gap_event, nullptr);
+    if (rc != 0) ESP_LOGW(TAG, "advertising failed: %d", rc);
+}
+
+bool is_companion(const ble_addr_t& a) { return peer.valid && memcmp(a.val, peer.addr, 6) == 0; }
+
+// A bond that isn't the companion's belongs to a phone.
+void refresh_phone_paired() {
+    ble_addr_t addrs[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
+    int n = 0;
+    bool paired = false;
+    if (ble_store_util_bonded_peers(addrs, &n, MYNEWT_VAL(BLE_STORE_MAX_BONDS)) == 0)
+        for (int i = 0; i < n; ++i) paired |= !is_companion(addrs[i]);
+    {
+        app::Locked s;
+        s->link.phone_paired = paired;
+    }
+    app::mark(app::kDirtyLink);
+}
+
+void phone_maybe_ready() {
+    if (phone_conn.load() == BLE_HS_CONN_HANDLE_NONE || !phone_encrypted || !phone_subscribed || phone_ready.load()) return;
+    phone_ready.store(true);
+    ESP_LOGI(TAG, "phone link up; handshake");
+    refresh_phone_paired();
+    settings::set_last_link_phone(true);
+    swlink::on_companion_ready();
+}
+
+void show_passkey(uint32_t code) {
+    {
+        app::Locked s;
+        s->passkey_shown = code;
+        s->passkey_mode = code ? app::PasskeyMode::ShowForPhone : app::PasskeyMode::None;
+    }
+    app::mark(app::kDirtyPasskey);
+}
+
+int phone_gap_event(struct ble_gap_event* ev, void*) {
+    switch (ev->type) {
+        case BLE_GAP_EVENT_CONNECT:
+            if (ev->connect.status != 0) {
+                ESP_LOGW(TAG, "phone connect failed: %d", ev->connect.status);
+                start_advertising();
+                return 0;
+            }
+            ESP_LOGI(TAG, "phone connected; securing link");
+            phone_conn.store(ev->connect.conn_handle);
+            if (ble_gap_conn_active()) ble_gap_conn_cancel();
+            if (conn.load() != BLE_HS_CONN_HANDLE_NONE) ble_gap_terminate(conn.load(), BLE_ERR_REM_USER_CONN_TERM);  // takes over
+            // Display-only so an iPhone asks for the code on the watch (MITM protected). The code is
+            // random per pairing.
+            ble_hs_cfg.sm_io_cap = BLE_HS_IO_DISPLAY_ONLY;
+            {
+                app::Locked s;
+                s->link.phone_connected = true;
+            }
+            set_state(app::LinkState::Securing);
+            apply_conn_params(ev->connect.conn_handle);
+            // NimBLE holds this event back until the remote features are read, so a bonded iPhone may
+            // have encrypted, and the subscription been restored, already. It then ignores a security
+            // request, which would time out and drop the link.
+            {
+                struct ble_gap_conn_desc desc;
+                if (ble_gap_conn_find(ev->connect.conn_handle, &desc) == 0 && desc.sec_state.encrypted && desc.sec_state.authenticated) {
+                    ESP_LOGI(TAG, "phone link already encrypted");
+                    phone_encrypted = true;
+                    phone_maybe_ready();
+                } else {
+                    ble_gap_security_initiate(ev->connect.conn_handle);
+                }
+            }
+            return 0;
+        case BLE_GAP_EVENT_DISCONNECT:
+            ESP_LOGI(TAG, "phone disconnected: reason 0x%x", ev->disconnect.reason);
+            phone_conn.store(BLE_HS_CONN_HANDLE_NONE);
+            phone_encrypted = phone_subscribed = false;
+            phone_ready.store(false);
+            cur_mtu.store(23);
+            swlink::on_companion_down();
+            show_passkey(0);
+            {
+                app::Locked s;
+                s->link.phone_connected = false;
+            }
+            start_advertising();
+            post(Cmd::Evaluate, 1);
+            return 0;
+        case BLE_GAP_EVENT_ADV_COMPLETE:
+            start_advertising();
+            return 0;
+        case BLE_GAP_EVENT_ENC_CHANGE: {
+            show_passkey(0);
+            struct ble_gap_conn_desc desc;
+            // By the state, not the status: a timed-out security request says nothing about a link
+            // that the phone encrypted anyway.
+            if (ble_gap_conn_find(ev->enc_change.conn_handle, &desc) != 0 || !desc.sec_state.encrypted || !desc.sec_state.authenticated) {
+                ESP_LOGW(TAG, "phone link not authenticated (%d); dropping", ev->enc_change.status);
+                set_state(app::LinkState::Securing, "Pairing failed: forget the watch in the phone's Bluetooth settings");
+                ble_gap_terminate(ev->enc_change.conn_handle, BLE_ERR_AUTH_FAIL);
+                return 0;
+            }
+            ESP_LOGI(TAG, "phone link encrypted");
+            phone_encrypted = true;
+            phone_maybe_ready();
+            return 0;
+        }
+        case BLE_GAP_EVENT_PASSKEY_ACTION: {
+            struct ble_sm_io io = {};
+            io.action = ev->passkey.params.action;
+            if (io.action == BLE_SM_IOACT_DISP) {
+                io.passkey = 100000 + esp_random() % 900000;
+                show_passkey(io.passkey);
+            } else {
+                ESP_LOGW(TAG, "unexpected pairing action %d; rejecting", io.action);
+                io.numcmp_accept = 0;
+            }
+            ble_sm_inject_io(ev->passkey.conn_handle, &io);
+            return 0;
+        }
+        case BLE_GAP_EVENT_REPEAT_PAIRING: {
+            struct ble_gap_conn_desc desc;
+            if (ble_gap_conn_find(ev->repeat_pairing.conn_handle, &desc) == 0) ble_store_util_delete_peer(&desc.peer_id_addr);
+            return BLE_GAP_REPEAT_PAIRING_RETRY;
+        }
+        case BLE_GAP_EVENT_SUBSCRIBE:
+            if (ev->subscribe.attr_handle == phone_tx_handle) {  // may come before the connect event
+                ESP_LOGI(TAG, "phone subscribe: notify %d, reason %d", ev->subscribe.cur_notify, ev->subscribe.reason);
+                phone_subscribed = ev->subscribe.cur_notify;
+                phone_maybe_ready();
+            }
+            return 0;
+        case BLE_GAP_EVENT_MTU:
+            cur_mtu.store(ev->mtu.value);
+            ESP_LOGI(TAG, "phone mtu %d", ev->mtu.value);
+            return 0;
+        case BLE_GAP_EVENT_CONN_UPDATE: {
+            struct ble_gap_conn_desc desc;
+            if (ble_gap_conn_find(ev->conn_update.conn_handle, &desc) == 0)
+                ESP_LOGI(TAG, "phone conn params: status %d, itvl %d, latency %d, timeout %d", ev->conn_update.status, desc.conn_itvl, desc.conn_latency, desc.supervision_timeout);
+            return 0;
+        }
+        default:
+            return 0;
+    }
+}
+
+int on_phone_access(uint16_t conn_handle, uint16_t, struct ble_gatt_access_ctxt* ctxt, void* arg) {
+    if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {  // Info: open, identity only
+        swp::DeviceInfo d;
+        d.role = static_cast<uint8_t>(swp::Role::Watch);
+        d.name = "SW Watch";
+        d.firmware = esp_app_get_description()->version;
+        d.hardware = "Waveshare ESP32-S3-Touch-AMOLED-2.06";
+        esp_read_mac(d.mac, ESP_MAC_BT);
+        auto payload = swp::encode_payload(d);
+        return os_mbuf_append(ctxt->om, payload.data(), payload.size()) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+    if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR || conn_handle != phone_conn.load()) return BLE_ATT_ERR_UNLIKELY;
+    uint8_t buf[256];
+    uint16_t n = OS_MBUF_PKTLEN(ctxt->om);
+    if (n > sizeof(buf)) return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    if (ble_hs_mbuf_to_flat(ctxt->om, buf, sizeof(buf), &n) != 0) return BLE_ATT_ERR_UNLIKELY;
+    if (!swlink::ready()) ESP_LOGI(TAG, "phone wrote %u bytes before the handshake finished", n);
+    if (phone_ready.load()) swlink::on_companion_bytes(buf, n);
+    return 0;
+}
+
+const struct ble_gatt_chr_def kPhoneChrs[] = {
+    {.uuid = &kRxUuid.u, .access_cb = on_phone_access, .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC | BLE_GATT_CHR_F_WRITE_AUTHEN},
+    {.uuid = &kTxUuid.u, .access_cb = on_phone_access, .flags = BLE_GATT_CHR_F_NOTIFY, .val_handle = &phone_tx_handle},
+    {.uuid = &kInfoUuid.u, .access_cb = on_phone_access, .flags = BLE_GATT_CHR_F_READ},
+    {},
+};
+const struct ble_gatt_svc_def kPhoneSvcs[] = {
+    {.type = BLE_GATT_SVC_TYPE_PRIMARY, .uuid = &kWatchSvcUuid.u, .characteristics = kPhoneChrs},
+    {},
+};
+
 void evaluate() {
-    if (conn.load() != BLE_HS_CONN_HANDLE_NONE) return;
+    if (conn.load() != BLE_HS_CONN_HANDLE_NONE || phone_conn.load() != BLE_HS_CONN_HANDLE_NONE) return;
     if (!peer.valid) {
-        set_state(app::LinkState::NoPeer);
+        bool phone;
+        {
+            app::Locked s;
+            phone = s->link.phone_paired;
+        }
+        set_state(phone ? app::LinkState::Waiting : app::LinkState::NoPeer);
         return;
     }
     if (user_disconnected) {
@@ -471,10 +697,24 @@ void mgr_task(void*) {
                 pairing_new = false;
                 {
                     app::Locked s;
+                    bool paired = s->link.phone_paired, on = s->link.phone_connected;
                     s->link = app::LinkInfo{};
+                    s->link.phone_paired = paired;
+                    s->link.phone_connected = on;
                 }
                 if (h != BLE_HS_CONN_HANDLE_NONE) ble_gap_terminate(h, BLE_ERR_REM_USER_CONN_TERM);
-                set_state(app::LinkState::NoPeer);
+                evaluate();
+                break;
+            }
+            case Cmd::ForgetPhone: {
+                ble_addr_t addrs[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
+                int n = 0;
+                if (phone_conn.load() != BLE_HS_CONN_HANDLE_NONE) ble_gap_terminate(phone_conn.load(), BLE_ERR_REM_USER_CONN_TERM);
+                if (ble_store_util_bonded_peers(addrs, &n, MYNEWT_VAL(BLE_STORE_MAX_BONDS)) == 0)
+                    for (int i = 0; i < n; ++i)
+                        if (!is_companion(addrs[i])) ble_store_util_delete_peer(&addrs[i]);
+                refresh_phone_paired();
+                evaluate();
                 break;
             }
             case Cmd::Passkey:
@@ -498,7 +738,8 @@ void mgr_task(void*) {
                 break;
             }
             case Cmd::Drop:
-                if (h != BLE_HS_CONN_HANDLE_NONE) ble_gap_terminate(h, BLE_ERR_REM_USER_CONN_TERM);
+                if (phone_conn.load() != BLE_HS_CONN_HANDLE_NONE) ble_gap_terminate(phone_conn.load(), BLE_ERR_REM_USER_CONN_TERM);
+                else if (h != BLE_HS_CONN_HANDLE_NONE) ble_gap_terminate(h, BLE_ERR_REM_USER_CONN_TERM);
                 break;
             case Cmd::Evaluate:
                 evaluate();
@@ -513,6 +754,8 @@ void on_sync() {
     ble_hs_util_ensure_addr(0);
     ble_hs_id_infer_auto(0, &own_addr_type);
     synced.store(true);
+    refresh_phone_paired();
+    start_advertising();
     post(Cmd::Evaluate);
 }
 
@@ -547,14 +790,31 @@ void init() {
     ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
     ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
     ble_store_config_init();
+    ble_svc_gap_init();
+    ble_svc_gatt_init();
+    ble_svc_gap_device_name_set("SW Watch");
+    ESP_ERROR_CHECK(ble_gatts_count_cfg(kPhoneSvcs));
+    ESP_ERROR_CHECK(ble_gatts_add_svcs(kPhoneSvcs));
     xTaskCreatePinnedToCore(mgr_task, "ble_mgr", 4096, nullptr, 5, nullptr, 0);
     nimble_port_freertos_init(host_task);
 }
 
-bool connected() { return conn.load() != BLE_HS_CONN_HANDLE_NONE && tx_cccd != 0; }
+bool connected() { return phone_ready.load() || (conn.load() != BLE_HS_CONN_HANDLE_NONE && tx_cccd != 0); }
 uint16_t mtu() { return cur_mtu.load(); }
 
 bool write(const uint8_t* data, size_t len) {
+    if (phone_ready.load()) {
+        for (int tries = 0; tries < 200; ++tries) {
+            uint16_t h = phone_conn.load();
+            if (h == BLE_HS_CONN_HANDLE_NONE) return false;
+            struct os_mbuf* om = ble_hs_mbuf_from_flat(data, static_cast<uint16_t>(len));
+            int rc = om ? ble_gatts_notify_custom(h, phone_tx_handle, om) : BLE_HS_ENOMEM;  // consumes om
+            if (rc == 0) return true;
+            if (rc != BLE_HS_ENOMEM && rc != BLE_HS_EBUSY) return false;
+            vTaskDelay(pdMS_TO_TICKS(5));
+        }
+        return false;
+    }
     for (int tries = 0; tries < 200; ++tries) {
         uint16_t h = conn.load();
         if (h == BLE_HS_CONN_HANDLE_NONE || rx_handle == 0) return false;
@@ -581,13 +841,14 @@ void pair(const uint8_t addr[6], uint8_t addr_type, const char* name) {
 void disconnect() { post(Cmd::Disconnect); }
 void reconnect() { post(Cmd::Reconnect); }
 void forget() { post(Cmd::Forget); }
+void forget_phone() { post(Cmd::ForgetPhone); }
 void submit_passkey(uint32_t pk) { post(Cmd::Passkey, pk); }
 void cancel_passkey() { post(Cmd::CancelPasskey); }
 void drop_link() { post(Cmd::Drop); }
 
 void set_fast(bool on) {
     if (fast_wanted.exchange(on) == on) return;
-    uint16_t h = conn.load();
+    uint16_t h = phone_conn.load() != BLE_HS_CONN_HANDLE_NONE ? phone_conn.load() : conn.load();
     if (h != BLE_HS_CONN_HANDLE_NONE) apply_conn_params(h);
 }
 

@@ -29,6 +29,10 @@ void set(const swp::WatchSettings& s);  // persists and applies timezone
 bool dnd();
 void set_dnd(bool on);
 
+// Which link was up last (true: the phone); Home's LINK / NET opens its settings.
+bool last_link_phone();
+void set_last_link_phone(bool phone);
+
 // Passcode lock (basic deterrence only: stored in plain NVS). `locked` persists across reboots.
 std::string lock_pin();  // empty: no passcode
 void set_lock_pin(const std::string& pin);

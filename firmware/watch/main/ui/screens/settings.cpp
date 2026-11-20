@@ -1,5 +1,5 @@
-// Settings: connections (companion, phone, AirPods, home Wi-Fi), notifications, vibration,
-// display, time zone, web configuration window and device information.
+// Settings: the phone, the companion and what it provides (AirPods, home Wi-Fi, notifications,
+// maps, server, web configuration window), vibration, display, time zone and device information.
 #include <cstring>
 
 #include "app/services.hpp"
@@ -50,6 +50,8 @@ public:
 
 // ---- Companion -------------------------------------------------------------------------
 
+void companion_rows(lv_obj_t* parent);
+
 class CompanionScan : public ListScreen {
 public:
     const char* title() const override { return "Find Companion"; }
@@ -84,7 +86,7 @@ class CompanionScreen : public ListScreen {
 public:
     const char* title() const override { return "Companion"; }
     void refresh(uint32_t d) override {
-        if (d & (app::kDirtyLink | app::kDirtyCompanion)) rebuild();
+        if (d & (app::kDirtyLink | app::kDirtyCompanion | app::kDirtyAudio | app::kDirtyWifi | app::kDirtyWebConfig | app::kDirtySettings)) rebuild();
     }
     void populate() override {
         app::LinkInfo li;
@@ -92,10 +94,15 @@ public:
             app::Locked s;
             li = s->link;
         }
+        if (li.phone_connected) {  // the link state and error are the phone's
+            li.state = app::LinkState::Disconnected;
+            li.last_error.clear();
+        }
         std::string st = app::link_state_name(li.state);
         if (li.state == app::LinkState::Waiting) st += " (retry in " + std::to_string(li.retry_in_s) + " s)";
         list_row(content, "Status", nullptr, st.c_str(), nullptr, li.state == app::LinkState::Ready ? color::green() : color::orange(), LV_SYMBOL_BLUETOOTH);
         if (!li.last_error.empty()) section_header(content, li.last_error.c_str());
+        companion_rows(content);
         if (li.has_peer) {
             list_row(content, li.peer_name.empty() ? "Companion" : li.peer_name.c_str(), ble_addr_str(li.peer_addr).c_str(),
                      li.peer_firmware.empty() ? nullptr : li.peer_firmware.c_str());
@@ -113,17 +120,27 @@ public:
     }
 };
 
-// ---- Phone (future) --------------------------------------------------------------------
+// ---- Phone (the iOS app connects to the watch) -------------------------------------------
 
 class PhoneScreen : public ListScreen {
 public:
     const char* title() const override { return "Phone"; }
+    void refresh(uint32_t d) override {
+        if (d & app::kDirtyLink) rebuild();
+    }
     void populate() override {
-        // TODO(PHONE): a future iOS/Android app will act as an alternative provider for
-        // internet access, location and music over BLE, speaking the same SWP protocol with
-        // Role::Phone. Until then this screen only explains the limitation.
-        list_row(content, "Not available yet", "A phone companion app is planned", nullptr, nullptr, color::card2(), LV_SYMBOL_WARNING);
-        section_header(content, "Today the watch gets internet, location and music through the ESP32 companion.");
+        app::LinkInfo li;
+        {
+            app::Locked s;
+            li = s->link;
+        }
+        const char* st = li.phone_connected ? app::link_state_name(li.state) : li.phone_paired ? "Waiting for phone" : "Not paired";
+        list_row(content, "Status", nullptr, st, nullptr, li.phone_connected && li.state == app::LinkState::Ready ? color::green() : color::orange(), LV_SYMBOL_CALL);
+        if (li.phone_connected && !li.last_error.empty()) section_header(content, li.last_error.c_str());
+        section_header(content, li.phone_paired ? "The phone reconnects on its own while the app is running."
+                                                : "Open the SW Companion app on the phone. It finds the watch and asks for the code shown here.");
+        if (li.phone_paired)
+            pill_button(content, "Forget phone", color::red(), [] { central::forget_phone(); }, LV_PCT(100), 64);
     }
 };
 
@@ -543,30 +560,6 @@ public:
     }
 };
 
-class ConnectionsScreen : public ListScreen {
-public:
-    const char* title() const override { return "Connections"; }
-    void refresh(uint32_t d) override {
-        if (d & (app::kDirtyLink | app::kDirtyAudio | app::kDirtyWifi)) rebuild();
-    }
-    void populate() override {
-        app::LinkState ls;
-        swp::AudioStatus a;
-        swp::WifiStatus w;
-        {
-            app::Locked s;
-            ls = s->link.state;
-            a = s->audio;
-            w = s->wifi;
-        }
-        list_row(content, "Companion", app::link_state_name(ls), nullptr, [] { push(new CompanionScreen()); }, color::blue(), LV_SYMBOL_BLUETOOTH);
-        list_row(content, "Phone", "Not available yet", nullptr, [] { push(new PhoneScreen()); }, color::card2(), LV_SYMBOL_CALL);
-        list_row(content, "AirPods", sink_state(a.state), nullptr, [] { push(new AirPodsScreen()); }, color::pink(), LV_SYMBOL_AUDIO);
-        list_row(content, "Home Wi-Fi", w.ssid.empty() ? net_state(w.state) : (w.ssid + " - " + net_state(w.state)).c_str(), nullptr,
-                 [] { push(new WifiScreen()); }, color::green(), LV_SYMBOL_WIFI);
-    }
-};
-
 // ---- Device info -----------------------------------------------------------------------
 
 class DeviceInfoScreen : public ListScreen {
@@ -675,21 +668,49 @@ private:
     }
 };
 
+// ---- Companion menu rows -----------------------------------------------------------------
+
+void companion_rows(lv_obj_t* parent) {
+    swp::AudioStatus a;
+    swp::WifiStatus w;
+    bool web;
+    {
+        app::Locked s;
+        a = s->audio;
+        w = s->wifi;
+        web = s->web_config_open && s->web_config_until_us > esp_timer_get_time();
+    }
+    auto st = settings::get();
+    list_row(parent, "AirPods", sink_state(a.state), nullptr, [] { push(new AirPodsScreen()); }, color::pink(), LV_SYMBOL_AUDIO);
+    list_row(parent, "Home Wi-Fi", w.ssid.empty() ? net_state(w.state) : (w.ssid + " - " + net_state(w.state)).c_str(), nullptr,
+             [] { push(new WifiScreen()); }, color::green(), LV_SYMBOL_WIFI);
+    list_row(parent, "Notifications", st.ntfy_enabled ? "ntfy topics" : "Off", nullptr, [] { push(new NotificationSettingsScreen()); },
+             color::purple(), LV_SYMBOL_BELL);
+    list_row(parent, "Maps", "OSM data on the server", nullptr, [] { push(new MapsSettingsScreen()); }, color::green(), LV_SYMBOL_GPS);
+    list_row(parent, "Server", "Helper, ntfy, Navidrome", nullptr, [] { push(new ServerSettingsScreen()); }, color::card2(), LV_SYMBOL_SETTINGS);
+    list_row(parent, "Web configuration", web ? "Open on the companion's IP" : "Companion settings in a browser", nullptr,
+             [] { push(new WebConfigScreen()); }, color::purple(), LV_SYMBOL_SETTINGS);
+}
+
 // ---- Settings root ---------------------------------------------------------------------
 
 class SettingsScreen : public ListScreen {
 public:
     const char* title() const override { return "Settings"; }
     void refresh(uint32_t d) override {
-        if (d & (app::kDirtyWebConfig | app::kDirtySettings)) rebuild();
+        if (d & (app::kDirtyLink | app::kDirtySettings)) rebuild();
     }
     void populate() override {
         auto st = settings::get();
-        list_row(content, "Connections", "Companion, phone, AirPods, Wi-Fi", nullptr, [] { push(new ConnectionsScreen()); }, color::blue(), LV_SYMBOL_BLUETOOTH);
-        list_row(content, "Notifications", st.ntfy_enabled ? "ntfy topics" : "Off", nullptr, [] { push(new NotificationSettingsScreen()); },
-                 color::purple(), LV_SYMBOL_BELL);
-        list_row(content, "Maps", "OSM data on the server", nullptr, [] { push(new MapsSettingsScreen()); }, color::green(), LV_SYMBOL_GPS);
-        list_row(content, "Server", "Helper, ntfy, Navidrome", nullptr, [] { push(new ServerSettingsScreen()); }, color::card2(), LV_SYMBOL_SETTINGS);
+        app::LinkState ls;
+        const char* phone;
+        {
+            app::Locked s;
+            ls = s->link.phone_connected ? app::LinkState::Disconnected : s->link.state;
+            phone = s->link.phone_connected ? app::link_state_name(s->link.state) : s->link.phone_paired ? "Waiting for phone" : "Not paired";
+        }
+        list_row(content, "Phone", phone, nullptr, [] { push(new PhoneScreen()); }, color::blue(), LV_SYMBOL_CALL);
+        list_row(content, "Companion", app::link_state_name(ls), nullptr, [] { push(new CompanionScreen()); }, color::blue(), LV_SYMBOL_BLUETOOTH);
         switch_row(content, "Vibration", st.vibration_enabled, [](bool on) {
             auto s = settings::get();
             s.vibration_enabled = on;
@@ -719,20 +740,16 @@ public:
                 app::mark(app::kDirtyTime | app::kDirtySettings);
             });
         }, color::orange(), LV_SYMBOL_LOOP);
-        bool web;
-        {
-            app::Locked s;
-            web = s->web_config_open && s->web_config_until_us > esp_timer_get_time();
-        }
-        list_row(content, "Web configuration", web ? "Open on the companion's IP" : "Companion settings in a browser", nullptr,
-                 [] { push(new WebConfigScreen()); }, color::purple(), LV_SYMBOL_SETTINGS);
         list_row(content, "About", nullptr, nullptr, [] { push(new DeviceInfoScreen()); }, color::card2(), LV_SYMBOL_LIST);
     }
 };
 
 }  // namespace
 
-Screen* make_connections() { return new ConnectionsScreen(); }
+Screen* make_link_settings() {
+    if (settings::last_link_phone()) return new PhoneScreen();
+    return new CompanionScreen();
+}
 Screen* make_settings() { return new SettingsScreen(); }
 
 }  // namespace ui

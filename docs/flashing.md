@@ -64,7 +64,7 @@ factory app 3.875 MB; no OTA because two app slots do not fit in 4 MB).
 ## Companion settings
 
 Flashing never touches the companion's `cfg` partition (Wi-Fi, helper, ntfy and Navidrome
-settings). Set them on the watch (Settings → Server, Settings → Connections → Home Wi-Fi)
+settings). Set them on the watch (Settings → Server, Settings → Companion → Home Wi-Fi)
 or on the companion's LAN settings page (Settings → Web configuration).
 
 `esptool.py erase_flash` wipes everything including bonds and `cfg`.
