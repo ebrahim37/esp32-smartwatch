@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key><string>en</string>
+	<key>CFBundleDisplayName</key><string>SW Companion</string>
+	<key>CFBundleExecutable</key><string>SWCompanion</string>
+	<key>CFBundleIdentifier</key><string>org.esp32smartwatch.companion</string>
+	<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+	<key>CFBundleName</key><string>SWCompanion</string>
+	<key>CFBundlePackageType</key><string>APPL</string>
+	<key>CFBundleShortVersionString</key><string>0.1</string>
+	<key>CFBundleVersion</key><string>1</string>
+	<key>CFBundleSupportedPlatforms</key><array><string>iPhoneOS</string></array>
+	<key>LSRequiresIPhoneOS</key><true/>
+	<key>MinimumOSVersion</key><string>15.0</string>
+	<key>UIDeviceFamily</key><array><integer>1</integer></array>
+	<key>UILaunchScreen</key><dict/>
+	<key>UIRequiredDeviceCapabilities</key><array><string>arm64</string></array>
+	<key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string></array>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key><false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key><string>Default</string>
+					<key>UISceneDelegateClassName</key><string>SWScene</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>bluetooth-central</string>
+		<string>location</string>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key><true/>
+	</dict>
+	<key>NSBluetoothAlwaysUsageDescription</key><string>Connects to the smartwatch.</string>
+	<key>NSLocationWhenInUseUsageDescription</key><string>Gives the watch its position for maps and weather.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key><string>Gives the watch its position while this app is in the background.</string>
+	<key>NSMicrophoneUsageDescription</key><string>Records voice memos started from the watch.</string>
+	<key>NSLocalNetworkUsageDescription</key><string>Reaches a Navidrome server on your home network.</string>
+</dict>
+</plist>

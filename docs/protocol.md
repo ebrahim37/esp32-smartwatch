@@ -101,3 +101,10 @@ requests for it. On the watch: `fetch::request({.url = "https://…", .headers =
 * LAN settings page: `WebConfigCommand` (watch → companion, seconds; 0 closes) opens
   `http://<companion-ip>/` for at most 10 min; the companion reports `WebConfigStatus`
   (open, remaining seconds, URL) whenever it changes. See docs/web-config.md.
+
+## Phone link
+
+With the iOS app the watch is the GATT peripheral: service `7a1e0010-5c3b-4f8e-9d2a-6b1e5a7c0de0`
+with the same RX, TX and Info characteristics. Frames are unchanged; the watch's go out as TX
+notifications and the phone's arrive as RX writes (at most 244 bytes each). The watch sends Hello
+once the link is encrypted, authenticated and TX is subscribed. See [ios-app.md](ios-app.md).

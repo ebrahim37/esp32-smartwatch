@@ -1,7 +1,7 @@
 # ESP32 smartwatch ecosystem
 
 Custom smartwatch (ESP32-S3, LVGL 9) + wireless companion (ESP32: Wi-Fi, SD, AirPods audio)
-+ Rust VPS helper. Prototype hardware: Waveshare
++ Rust VPS helper + optional iOS app that replaces the companion. Prototype hardware: Waveshare
 ESP32-S3-Touch-AMOLED-2.06 (watch) and Freenove FNK0060 ESP32-WROVER (companion).
 
 ```
@@ -9,9 +9,10 @@ firmware/watch/       ESP-IDF 5.5.5 watch firmware (board HAL in components/boar
 firmware/companion/   ESP-IDF 5.5.5 companion firmware (logic in components/companion_core)
 shared/protocol/      SWP: versioned binary BLE protocol (C++17), docs/protocol.md
 server/               Rust/Axum VPS helper (container: see server/README.md)
+phone/ios/            iOS companion app (Objective-C++, built on Linux, runs in LiveContainer): docs/ios-app.md
 tests/host/           host unit tests for all hardware-independent C++ code
-scripts/sw            build, test, package, flash, monitor, fonts
-docs/                 architecture, protocol, hardware, flashing, server, web config, test checklist
+scripts/sw            build, test, package, flash, monitor, fonts, iOS SDK + ipa
+docs/                 architecture, protocol, hardware, flashing, server, web config, iOS app, test checklist
 build/                all build output and caches, git-ignored (build/dist: flashable images)
 ```
 
@@ -22,6 +23,8 @@ nix develop                     # ESP-IDF v5.5.5 + toolchains, Rust (first run d
 scripts/sw build                # or: build watch|companion|server
 scripts/sw test                 # C++ (ASan/UBSan) and Rust tests + clippy
 scripts/sw package              # build/dist/{watch,companion}: images, offsets, merged image
+scripts/sw ios-sdk [Xcode.xip]  # once: extract iPhoneOS.sdk from an Xcode archive
+scripts/sw ipa                  # build/dist/ios/SWCompanion.ipa
 ```
 
 `scripts/sw` re-enters `nix develop` automatically when run from a plain shell.
@@ -57,12 +60,16 @@ espflash monitor -p COM4          # serial console (Ctrl+R reset, Ctrl+C quit)
 
 1. Deploy the helper ([docs/server.md](docs/server.md)).
 2. Boot the companion; the BLE pairing passkey is fixed to `616616` for the prototype (TODO(PROTOTYPE)); it is also printed on the serial console.
-3. Watch → Apps → Settings → Connections → Companion → Find & pair → enter `616616`.
-4. Watch → Settings → Server: helper URL/token, ntfy URL/token, Navidrome; Settings →
-   Connections → Home Wi-Fi.
-5. Watch → Connections → AirPods → Search (AirPods in pairing mode) → select.
-6. Optional: edit the companion's settings from a browser: Watch → Settings → Web configuration
+3. Watch → Apps → Settings → Companion → Find & pair → enter `616616`.
+4. Watch → Settings → Companion → Server: helper URL/token, ntfy URL/token, Navidrome; Settings →
+   Companion → Home Wi-Fi.
+5. Watch → Settings → Companion → AirPods → Search (AirPods in pairing mode) → select.
+6. Optional: edit the companion's settings from a browser: Watch → Settings → Companion → Web configuration
    ([docs/web-config.md](docs/web-config.md)).
+
+Instead of the companion, an iPhone can provide internet, location and music: import
+`SWCompanion.ipa` into LiveContainer, open it and type the code the watch shows
+([docs/ios-app.md](docs/ios-app.md)). A connected phone takes priority over the companion.
 
 Then follow [docs/hardware-test-checklist.md](docs/hardware-test-checklist.md).
 

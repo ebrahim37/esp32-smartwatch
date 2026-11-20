@@ -24,4 +24,8 @@ std::string subsonic_url(const std::string& base, const std::string& method, con
 // 192.168/16): Navidrome on the home LAN may be used without TLS. Everything else must be https.
 bool lan_http_url(const std::string& url);
 
+// Same for Tailscale addresses (100.64/10): the tunnel encrypts the traffic, and they are
+// unreachable without it. Only the phone can use these.
+bool tailnet_http_url(const std::string& url);
+
 }  // namespace ccore

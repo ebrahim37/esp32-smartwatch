@@ -32,12 +32,11 @@ std::string subsonic_url(const std::string& base, const std::string& method, con
     return url;
 }
 
-bool lan_http_url(const std::string& url) {
+static bool http_ipv4(const std::string& url, unsigned (&o)[4]) {
     std::string_view host = url;
     if (host.substr(0, 7) != "http://") return false;
     host.remove_prefix(7);
     host = host.substr(0, host.find_first_of(":/?#"));
-    unsigned o[4];
     for (int i = 0; i < 4; ++i) {
         size_t dot = host.find('.');
         std::string_view part = host.substr(0, dot);
@@ -50,7 +49,17 @@ bool lan_http_url(const std::string& url) {
         if (o[i] > 255 || (dot == std::string_view::npos) != (i == 3)) return false;
         if (i < 3) host.remove_prefix(dot + 1);
     }
-    return o[0] == 10 || (o[0] == 172 && o[1] >= 16 && o[1] <= 31) || (o[0] == 192 && o[1] == 168);
+    return true;
+}
+
+bool lan_http_url(const std::string& url) {
+    unsigned o[4];
+    return http_ipv4(url, o) && (o[0] == 10 || (o[0] == 172 && o[1] >= 16 && o[1] <= 31) || (o[0] == 192 && o[1] == 168));
+}
+
+bool tailnet_http_url(const std::string& url) {
+    unsigned o[4];
+    return http_ipv4(url, o) && o[0] == 100 && o[1] >= 64 && o[1] <= 127;
 }
 
 }  // namespace ccore

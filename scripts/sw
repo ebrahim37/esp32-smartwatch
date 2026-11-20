@@ -13,6 +13,8 @@
 #   flash watch|companion [PORT] [--monitor] writes build/dist/<target> over USB
 #   monitor watch|companion [PORT]           serial console
 #   fonts                                    regenerate the watch's LVGL fonts
+#   ios-sdk [XIP]                            extract iPhoneOS.sdk from an Xcode .xip -> build/cache/ios-sdk
+#   ipa                                      build the iOS app -> build/dist/ios/SWCompanion.ipa
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 B="$ROOT/build"
@@ -23,6 +25,7 @@ required_tools=(idf.py cargo)
 case "${1:-}:${2:-}" in
     test:*) dev_shell+="#host"; required_tools=(cargo cmake ninja) ;;
     build:server) dev_shell+="#host"; required_tools=(cargo) ;;
+    ios-sdk:* | ipa:*) dev_shell+="#ios"; required_tools=(clang ld64.lld ldid xar pbzx) ;;
 esac
 for tool in "${required_tools[@]}"; do
     if ! command -v "$tool" >/dev/null 2>&1 && [ -z "${SW_IN_NIX:-}" ]; then
@@ -174,6 +177,28 @@ fonts() {
     echo "fonts written to $OUT"
 }
 
+# Only iPhoneOS.sdk is unpacked from the (multi-GB) Xcode archive. The SDK is Apple's: it stays in
+# build/cache, which is git-ignored.
+ios_sdk() {
+    local xip="${1:-$HOME/Downloads/Xcode_27.2.xip}" out="$B/cache/ios-sdk" tmp="$B/cache/ios-sdk.tmp"
+    [ -f "$xip" ] || { echo "no Xcode archive at $xip" >&2; exit 1; }
+    rm -rf "$tmp"
+    mkdir -p "$tmp/x"
+    xar -xf "$xip" -C "$tmp" Content
+    pbzx -n "$tmp/Content" | python3 -I "$ROOT/scripts/extract_ios_sdk.py" "$tmp/x"
+    rm -rf "$out"
+    mkdir -p "$out"
+    mv "$tmp/x/iPhoneOS.sdk" "$out/iPhoneOS.sdk"
+    rm -rf "$tmp"
+    echo "SDK: $out/iPhoneOS.sdk ($(du -sh "$out/iPhoneOS.sdk" | cut -f1))"
+}
+
+build_ipa() {
+    local sdk="$B/cache/ios-sdk/iPhoneOS.sdk"
+    [ -d "$sdk" ] || { echo "no iOS SDK: run scripts/sw ios-sdk" >&2; exit 1; }
+    make -C "$ROOT/phone/ios" -j"$(nproc)" SDK="$sdk" OUT="$B/ios" DIST="$B/dist/ios" ROOT="$ROOT"
+}
+
 cmd="${1:-help}"
 shift || true
 case "$cmd" in
@@ -193,5 +218,7 @@ case "$cmd" in
         idf "$t" -p "${2:-$(default_port "$t")}" monitor
         ;;
     fonts) fonts ;;
-    *) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; [ "$cmd" = help ] ;;
+    ios-sdk) ios_sdk "$@" ;;
+    ipa) build_ipa ;;
+    *) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; [ "$cmd" = help ] ;;
 esac

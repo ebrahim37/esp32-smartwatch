@@ -23,8 +23,9 @@
 * **VPS helper**: heavy lifting and upstream credentials: weather summaries, tile
   conversion, POI search, routing, on-demand OSM map data.
 
-`TODO(PHONE)`: a phone app may later replace the companion as provider; it would speak the
-same SWP protocol (`Role::Phone`). The watch only depends on SWP messages, not on who sends them.
+The iOS app (`phone/ios`, see [ios-app.md](ios-app.md)) can replace the companion as provider. It
+speaks the same SWP protocol (`Role::Phone`) with the GATT roles swapped. The watch only depends on
+SWP messages, not on who sends them.
 
 ## Threading
 

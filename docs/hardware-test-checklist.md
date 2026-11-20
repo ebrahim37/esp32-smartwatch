@@ -105,3 +105,23 @@ through it in order and note the results in `agent/firmware/progress.md`.
 - [ ] The page loads from a phone/PC on the same Wi-Fi; secrets show only as saved/not set; a non-https URL is rejected.
 - [ ] Saving a value is reflected on the watch (Settings → Server).
 - [ ] Close now (or the countdown reaching 0) makes the page unreachable.
+
+## iOS app (`docs/ios-app.md`)
+
+- [ ] `SWCompanion.ipa` imports into LiveContainer and opens to the status screen; the Bluetooth, location prompts appear.
+- [ ] Watch shows a 6-digit code on first connect; entering it on the phone gives LINK green; the companion link drops.
+- [ ] Relaunch the app, walk out of range and back, reboot the watch: each reconnects without a code, within seconds. Connecting the watch from iOS Bluetooth settings is picked up by the app.
+- [ ] Phone Bluetooth off, then on: reconnects without a code. iPhone address rotation: still reconnects after hours (TODO(HARDWARE) in `central.cpp`).
+- [ ] Phone reports position (Compass shows coordinates); moving updates them. Time and weather arrive.
+- [ ] App in the background with the phone locked, for an hour: link stays up, notifications and position keep arriving.
+- [ ] Maps: tiles load over the phone, search and a route work; a second view of an area comes from the cache in airplane mode.
+- [ ] HTTP proxy request from the watch works; an http:// URL is refused.
+- [ ] ntfy message reaches the watch; acknowledged ones don't repeat after relaunching the app.
+- [ ] Settings saved; secrets show only Saved/Not set; a non-https URL is rejected, except Navidrome on a private or Tailscale IP.
+- [ ] Music sync runs on Wi-Fi and on cellular through Tailscale, past 3 GB, and stops with 256 MB free; playlists and All Songs appear on the watch, and offline after relaunch.
+- [ ] Volume: with the phone at 30%, watch slider at 100 raises it or boosts up to +12 dB (test foreground and locked; listen for distortion on loud tracks). Raise the phone for another app, resume music: same loudness as before. Volume buttons during playback move music and the watch slider; AirPods and speaker keep the same slider value.
+- [ ] AirPods (connected to the iPhone) play from the watch: next/previous, seek, shuffle, repeat, up next, search, volume. Stem presses and lock screen controls work.
+- [ ] AirPods removed mid-song: playback pauses. A call interrupts and resumes. Connecting headphones mid-song continues within about a second of where it was; tracks advance on their own, seek works near the end.
+- [ ] Memo recorded from the watch through the AirPods mic; stop from the watch and from the stem; memo plays once, stops, can be deleted. Music paused for the memo resumes at the same place.
+- [ ] Timer alert tone on AirPods.
+- [ ] Watch without phone nearby: reconnects to the ESP32 companion as before.

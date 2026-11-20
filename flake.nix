@@ -67,6 +67,23 @@
           '';
         };
 
+        # iOS app (phone/ios): plain clang + lld against an SDK extracted from a local Xcode .xip.
+        devShells.ios = pkgs.mkShell {
+          buildInputs = with pkgs; [
+            llvmPackages.clang-unwrapped
+            llvmPackages.lld
+            ldid
+            xar
+            pbzx
+            zip
+            gnumake
+            python3
+          ];
+          shellHook = ''
+            export SW_CLANG_RESOURCE_DIR="${pkgs.llvmPackages.clang-unwrapped.lib}/lib/clang/${pkgs.lib.versions.major pkgs.llvmPackages.clang-unwrapped.version}"
+          '';
+        };
+
         # Lightweight shell for host-side tests and server work without ESP-IDF.
         devShells.host = pkgs.mkShell {
           buildInputs = hostTools;

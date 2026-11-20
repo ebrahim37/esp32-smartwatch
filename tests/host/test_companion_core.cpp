@@ -158,6 +158,17 @@ TEST(sync_plan_unknown_size_uses_budget) {
     CHECK_EQ(p.bytes_needed, 400u);
 }
 
+TEST(tailnet_http_url_only_cgnat_ipv4) {
+    CHECK(tailnet_http_url("http://100.64.0.1:4533"));
+    CHECK(tailnet_http_url("http://100.127.255.254/rest/ping"));
+    CHECK(!tailnet_http_url("http://100.63.0.1"));
+    CHECK(!tailnet_http_url("http://100.128.0.1"));
+    CHECK(!tailnet_http_url("http://192.168.1.2"));
+    CHECK(!tailnet_http_url("http://host.tailnet.ts.net"));
+    CHECK(!tailnet_http_url("https://100.64.0.1"));
+    CHECK(!lan_http_url("http://100.64.0.1"));
+}
+
 TEST(lan_http_url_only_private_ipv4) {
     CHECK(lan_http_url("http://192.168.1.2:4533"));
     CHECK(lan_http_url("http://10.0.0.5/rest/ping"));
