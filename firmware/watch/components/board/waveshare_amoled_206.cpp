@@ -315,6 +315,9 @@ PowerStatus power() {
     return p;
 }
 
+const char* pmic_boot_rails() { return axp2101::boot_rails(); }
+const char* pmic_boot_regs() { return axp2101::boot_regs(); }
+
 void vibrate(uint16_t on_ms, uint8_t count, uint16_t off_ms) {
     if (!caps.vibration || count == 0) return;
     esp_timer_stop(motor_timer);

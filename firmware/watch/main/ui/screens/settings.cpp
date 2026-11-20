@@ -589,6 +589,7 @@ public:
         list_row(content, "Steps today", nullptr, std::to_string(services::steps_today()).c_str());
         auto p = services::power();
         list_row(content, "Power", nullptr, p.battery_present ? (std::to_string(p.percent) + "%" + (p.charging ? " charging" : "")).c_str() : "USB (no battery)");
+        list_row(content, board::pmic_boot_rails(), board::pmic_boot_regs());
         swp::CompanionStatus cs;
         bool valid;
         {

@@ -56,6 +56,10 @@ bool imu_read(ImuSample& out);
 
 PowerStatus power();
 
+// AXP2101 state captured at boot, before the firmware writes to it.
+const char* pmic_boot_rails();
+const char* pmic_boot_regs();
+
 // Non-blocking: drives the motor for `on_ms`, `count` times with `off_ms` gaps.
 void vibrate(uint16_t on_ms, uint8_t count = 1, uint16_t off_ms = 120);
 

@@ -8,5 +8,7 @@ namespace board::axp2101 {
 
 esp_err_t init(i2c_master_bus_handle_t bus);
 bool read_status(PowerStatus& out);
+const char* boot_rails();
+const char* boot_regs();
 
 }  // namespace board::axp2101
