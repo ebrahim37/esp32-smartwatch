@@ -75,6 +75,9 @@ Then follow [docs/hardware-test-checklist.md](docs/hardware-test-checklist.md).
 
 ## Status
 
-Everything compiles and host tests pass; **nothing has been tested on the physical boards
-yet**. Prototype substitutions are marked in code with `TODO(PROTOTYPE)`, `TODO(HARDWARE)`,
+Everything compiles and all features work (maps, music, weather, steps) on the Waveshare and Freenove devkits.
+Both companion modes have been tested: iOS app and Freenove ESP32. iOS app has some issues regarding music volume:
+there isn't really an API to set phone volume directly, so the app does some tricks with volume boosting etc. and it's not perfect.
+
+Some prototype substitutions are marked in code with `TODO(PROTOTYPE)`, `TODO(HARDWARE)`,
 `TODO(LTE)` and `TODO(PHONE)` (`grep -rn "TODO(" firmware shared server web`).
