@@ -18,7 +18,7 @@ config COMPANION_SIM_LAT_E7
     int "Simulated GPS latitude (1e-7 deg)"
     default 437800833
     help
-        TODO(PROTOTYPE): 43 deg 46' 48.3" N. Replaced by EG912U GNSS in the production companion.
+        TODO(PROTOTYPE): 43 deg 46' 48.3" N. Replaced by EG916Q-GL GNSS on the final, standalone watch.
 
 config COMPANION_SIM_LON_E7
     int "Simulated GPS longitude (1e-7 deg)"

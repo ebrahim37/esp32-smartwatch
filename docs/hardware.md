@@ -1,5 +1,15 @@
 # Hardware
 
+## Final hardware
+
+A single standalone watch, with no companion: an ESP32 (classic) wired to a Quectel EG916Q-GL
+(LTE, GNSS) with a nano-SIM slot, and a 9-axis IMU whose 3-axis magnetometer gives Maps and
+Compass a real heading. It connects to AirPods directly and can optionally connect to
+the phone over BLE. The PCB is designed in a separate repo (not public yet) and is still under
+review before ordering from JLCPCB.
+
+The two devkits below are the prototype that the firmware in this repo was developed on.
+
 ## Watch prototype — Waveshare ESP32-S3-Touch-AMOLED-2.06
 
 | Function | Detail |
@@ -8,7 +18,7 @@
 | Display | 2.06" 410×502 AMOLED, CO5300 over QSPI (CS 12, PCLK 11, D0–D3 4–7, RST 8) — panel driver from Waveshare's BSP (`esp_lcd_sh8601` compatible); LVGL renders full frames into two PSRAM buffers and `board` streams changed rows through 2 × 20 KB internal DMA buffers (40 MHz QSPI, ~23 ms per full frame); no TE sync |
 | Touch | FT3168 on I2C (INT 38, RST 9), FT5x06-compatible driver |
 | I2C | SDA 15, SCL 14 (BSP bus, 400 kHz) shared by touch, AXP2101 (0x34), QMI8658 (0x6B/0x6A) |
-| IMU | QMI8658 6-axis; sampled at 50 Hz (125 Hz ODR, ±4 g, ±512 dps) |
+| IMU | QMI8658 6-axis; sampled at 50 Hz (125 Hz ODR, ±4 g, ±512 dps). No magnetometer: the Maps and Compass heading is gyro-integrated and relative (`TODO(PROTOTYPE)` in `core/heading.hpp`) |
 | PMIC | AXP2101: status, fuel gauge, battery ADC. Prototype runs from USB with no cell → UI shows `BAT: USB` |
 | Haptics | Motor driver on GPIO18 (from Waveshare's factory VibrationTest) |
 | Unused on purpose | SD slot, ES8311/ES7210 audio, PCF85063 RTC (the future watch has none of these) |

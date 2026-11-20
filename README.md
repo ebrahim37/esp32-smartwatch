@@ -1,8 +1,29 @@
 # ESP32 smartwatch ecosystem
 
-Custom smartwatch (ESP32-S3, LVGL 9) + wireless companion (ESP32: Wi-Fi, SD, AirPods audio)
-+ Rust VPS helper + optional iOS app that replaces the companion. Prototype hardware: Waveshare
+Custom smartwatch (ESP32-S3, LVGL 9), wireless companion (ESP32: Wi-Fi, SD, AirPods audio),
+Rust VPS helper and an optional iOS app that replaces the companion. Prototype hardware: Waveshare
 ESP32-S3-Touch-AMOLED-2.06 (watch) and Freenove FNK0060 ESP32-WROVER (companion).
+
+## Status
+
+**Devkit prototyping is done.** The next step is the final PCB, which is a single standalone
+watch: an ESP32 (classic) wired to a Quectel EG916Q-GL for LTE and GPS. It connects to AirPods directly and can optionally connect to the phone over BLE. The
+ESP32 companion below exists only for prototyping; the final watch doesn't need one. The PCB is
+still under review (in a separate, not yet public repo) before it is ordered from JLCPCB; the
+minimum order of 2 assembled boards out of 5 costs about CA$600.
+
+Everything compiles and all features work (maps, music, weather, steps) on the Waveshare and Freenove devkits.
+Both companion modes have been tested: iOS app and Freenove ESP32. iOS app has some issues regarding music volume:
+there isn't really an API to set phone volume directly, so the app does some tricks with volume boosting etc. and it's not perfect.
+
+The heading in Maps and Compass is a stand-in: the devkit's 6-axis IMU has no magnetometer, so it
+is integrated from the gyro, relative to where it started, and drifts. The final watch has a
+9-axis IMU with a 3-axis magnetometer for a real compass heading.
+
+Some prototype substitutions are marked in code with `TODO(PROTOTYPE)`, `TODO(HARDWARE)`,
+`TODO(LTE)` and `TODO(PHONE)` (`grep -rn "TODO(" firmware shared server web`).
+
+## Layout
 
 ```
 firmware/watch/       ESP-IDF 5.5.5 watch firmware (board HAL in components/board, logic in components/watch_core)
@@ -72,12 +93,3 @@ Instead of the companion, an iPhone can provide internet, location and music: im
 ([docs/ios-app.md](docs/ios-app.md)). A connected phone takes priority over the companion.
 
 Then follow [docs/hardware-test-checklist.md](docs/hardware-test-checklist.md).
-
-## Status
-
-Everything compiles and all features work (maps, music, weather, steps) on the Waveshare and Freenove devkits.
-Both companion modes have been tested: iOS app and Freenove ESP32. iOS app has some issues regarding music volume:
-there isn't really an API to set phone volume directly, so the app does some tricks with volume boosting etc. and it's not perfect.
-
-Some prototype substitutions are marked in code with `TODO(PROTOTYPE)`, `TODO(HARDWARE)`,
-`TODO(LTE)` and `TODO(PHONE)` (`grep -rn "TODO(" firmware shared server web`).

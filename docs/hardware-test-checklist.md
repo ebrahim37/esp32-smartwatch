@@ -1,7 +1,8 @@
 # Hardware test checklist
 
-Nothing below has been run on real hardware yet; the firmware was only compiled. Work
-through it in order and note the results in `agent/firmware/progress.md`.
+Written for the devkit prototypes (`docs/hardware.md`), on which the firmware now runs. Work
+through it in order on new hardware or after larger changes, and note the results in
+`agent/firmware/progress.md`.
 
 ## 0. Prepare
 - [ ] `scripts/sw test` passes on the host.

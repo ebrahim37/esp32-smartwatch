@@ -2,7 +2,7 @@
 //
 // Providers in priority order:
 //   1. Home Wi-Fi (configured SSID). Whenever Wi-Fi is connected, it is the only data path.
-//   2. TODO(LTE): EG912U cellular modem (see lte.hpp). Absent on this prototype.
+//   2. TODO(LTE): EG916Q-GL cellular modem (see lte.hpp). Absent on this prototype.
 //   3. TODO(PHONE): a phone app relaying internet over BLE (future, watch-side provider).
 //
 // While Wi-Fi is configured but not connected, the manager scans for the SSID with an

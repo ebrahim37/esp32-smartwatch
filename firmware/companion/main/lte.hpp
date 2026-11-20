@@ -1,6 +1,7 @@
-// TODO(LTE): EG912U LTE/GNSS modem provider.
+// TODO(LTE): EG916Q-GL LTE/GNSS modem provider.
 //
-// The production companion connects an EG912U over UART (AT + PPP via esp_modem). This
+// On the final hardware the companion's job moves onto the standalone watch, an ESP32 with a
+// Quectel EG916Q-GL (global, with GNSS) over UART (AT + PPP via esp_modem). This
 // prototype has no modem, so the provider reports "not present" and the connectivity manager
 // never selects it. Contract for the real implementation:
 //   * start() powers the modem, registers on the network and brings up PPP (esp_netif),

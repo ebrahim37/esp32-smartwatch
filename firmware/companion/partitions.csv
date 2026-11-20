@@ -1,6 +1,6 @@
 # Name,   Type, SubType, Offset,   Size,     Flags
 # 4 MB flash. No OTA slots: two copies of the ~2.5 MB dual-mode Bluetooth + Wi-Fi + TLS
-# image do not fit. TODO(HARDWARE): the EG912U companion PCB should carry >= 8 MB flash
+# image do not fit. TODO(HARDWARE): the final watch PCB (ESP32 + EG916Q-GL) should carry >= 8 MB flash
 # so OTA can be enabled.
 nvs,      data, nvs,     0x9000,   0x6000,
 phy_init, data, phy,     0xf000,   0x1000,

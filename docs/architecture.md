@@ -1,5 +1,10 @@
 # System architecture
 
+This is the devkit prototype: a watch plus a separate ESP32 companion. The final hardware is a
+single standalone watch (ESP32 + Quectel EG916Q-GL for LTE and GNSS, nano-SIM), which does the
+companion's job itself: it connects to AirPods directly and to the phone optionally over BLE. See
+[hardware.md](hardware.md#final-hardware).
+
 ```
  ┌──────────── Watch (ESP32-S3) ───────────┐   BLE (SWP, bonded)   ┌────────── Companion (ESP32) ──────────┐  HTTPS  ┌──── VPS helper (Rust) ────┐
  │ LVGL 9 UI ─ nav stack ─ screens         │◄─────────────────────►│ GATT server ─ dispatcher              │◄──────►│ weather (Open-Meteo)      │
@@ -18,8 +23,9 @@
 * **Watch**: UI, touch, local apps (timer, stopwatch, alarms, calculator, calendar), steps,
   relative heading, timekeeping (software clock synchronised over BLE; no RTC), notification
   history. No Wi-Fi.
-* **Companion**: all connectivity (Wi-Fi now, `TODO(LTE)` EG912U later), SD storage, map
-  cache, music library + playback to AirPods, position (`TODO(PROTOTYPE)` dummy fix).
+* **Companion** (prototype only): all connectivity (Wi-Fi; `TODO(LTE)` LTE + GNSS come with the
+  EG916Q-GL on the final watch), SD storage, map cache, music library + playback to AirPods, position
+  (`TODO(PROTOTYPE)` dummy fix).
 * **VPS helper**: heavy lifting and upstream credentials: weather summaries, tile
   conversion, POI search, routing, on-demand OSM map data.
 
