@@ -3,7 +3,9 @@
 `phone/ios` is an iPhone app that replaces the ESP32 companion and also gives the watch GPS. It
 is built on Linux and meant to run inside [LiveContainer](https://github.com/LiveContainer/LiveContainer).
 
-**Status: compiled only. It has not run on an iPhone, in LiveContainer or against the watch yet.**
+**Status: tested on a real iPhone in LiveContainer against the watch; everything works.** Volume
+control is a bit buggy: iOS has no API to set the system volume directly, so the hidden-slider and
+boosting workaround (see Volume below) isn't reliable.
 
 ## Building
 

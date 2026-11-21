@@ -4,6 +4,21 @@ Custom smartwatch (ESP32-S3, LVGL 9), wireless companion (ESP32: Wi-Fi, SD, AirP
 Rust VPS helper and an optional iOS app that replaces the companion. Prototype hardware: Waveshare
 ESP32-S3-Touch-AMOLED-2.06 (watch) and Freenove FNK0060 ESP32-WROVER (companion).
 
+<table>
+  <tr>
+    <td align="center"><img src="demo/IMG_8486.jpeg" width="200"><br>Watch face</td>
+    <td align="center"><img src="demo/IMG_8487.jpeg" width="200"><br>Apps</td>
+    <td align="center"><img src="demo/IMG_8488.jpeg" width="200"><br>Weather</td>
+    <td align="center"><img src="demo/IMG_8489.jpeg" width="200"><br>Maps</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="demo/IMG_8490.jpeg" width="200"><br>Now playing</td>
+    <td align="center"><img src="demo/IMG_8491.jpeg" width="200"><br>Passcode</td>
+    <td align="center"><img src="demo/IMG_8492.jpeg" width="200"><br>Settings</td>
+    <td></td>
+  </tr>
+</table>
+
 ## Status
 
 **Devkit prototyping is done.** The next step is the final PCB, which is a single standalone
